@@ -60,7 +60,7 @@ def pgfid_to_path(brick, changelog_data):
             path = output_path_prepare(path, args)
             changelog_data.gfidpath_set_path1(path, row[0])
         except (IOError, OSError) as e:
-            logger.warn("Error converting to path: %s" % e)
+            logger.warn(f"Error converting to path: {e}")
             continue
 
     # pgfid2 to path2 in case of RENAME
@@ -76,7 +76,7 @@ def pgfid_to_path(brick, changelog_data):
             path = output_path_prepare(path, args)
             changelog_data.gfidpath_set_path2(path, row[0])
         except (IOError, OSError) as e:
-            logger.warn("Error converting to path: %s" % e)
+            logger.warn(f"Error converting to path: {e}")
             continue
 
 
@@ -89,7 +89,7 @@ def populate_pgfid_and_inodegfid(brick, changelog_data):
     """
     for row in changelog_data.gfidpath_get({"path1": "", "type": "MODIFY"}):
         gfid = row[3].strip()
-        p = os.path.join(brick, ".glusterfs", gfid[0:2], gfid[2:4], gfid)
+        p = os.path.join(brick, ".glusterfs", gfid[:2], gfid[2:4], gfid)
         if os.path.islink(p):
             # It is a Directory if GFID backend path is symlink
             try:
@@ -98,7 +98,7 @@ def populate_pgfid_and_inodegfid(brick, changelog_data):
                 changelog_data.gfidpath_update({"path1": path},
                                                {"gfid": gfid})
             except (IOError, OSError) as e:
-                logger.warn("Error converting to path: %s" % e)
+                logger.warn(f"Error converting to path: {e}")
                 continue
         else:
             try:
@@ -118,7 +118,7 @@ def populate_pgfid_and_inodegfid(brick, changelog_data):
 
 def enum_hard_links_using_gfid2path(brick, gfid, args):
     hardlinks = []
-    p = os.path.join(brick, ".glusterfs", gfid[0:2], gfid[2:4], gfid)
+    p = os.path.join(brick, ".glusterfs", gfid[:2], gfid[2:4], gfid)
     if not os.path.isdir(p):
         # we have a symlink or a normal file
         try:
@@ -136,7 +136,7 @@ def enum_hard_links_using_gfid2path(brick, gfid, args):
                         fullpath = output_path_prepare(fullpath, args)
                         hardlinks.append(fullpath)
                     except (IOError, OSError) as e:
-                        logger.warn("Error converting to path: %s" % e)
+                        logger.warn(f"Error converting to path: {e}")
                         continue
         except (IOError, OSError):
             pass
@@ -147,7 +147,7 @@ def gfid_to_all_paths_using_gfid2path(brick, changelog_data, args):
     path = ""
     for row in changelog_data.gfidpath_get({"path1": "", "type": "MODIFY"}):
         gfid = row[3].strip()
-        logger.debug("Processing gfid %s" % gfid)
+        logger.debug(f"Processing gfid {gfid}")
         hardlinks = enum_hard_links_using_gfid2path(brick, gfid, args)
 
         path = ",".join(hardlinks)
@@ -207,7 +207,7 @@ def gfid_to_path_using_pgfid(brick, changelog_data, args):
                  ignore_dirs=ignore_dirs,
                  subdirs_crawl=False)
         except (IOError, OSError) as e:
-            logger.warn("Error converting to path: %s" % e)
+            logger.warn(f"Error converting to path: {e}")
             continue
 
 
@@ -286,8 +286,10 @@ def get_changes(brick, hash_dir, log_file, start, end, args):
     """
     session_dir = os.path.join(conf.get_opt("session_dir"),
                                args.session)
-    status_file = os.path.join(session_dir, args.volume,
-                     "%s.status" % urllib.quote_plus(args.brick))
+    status_file = os.path.join(
+        session_dir, args.volume, f"{urllib.quote_plus(args.brick)}.status"
+    )
+
 
     # Get previous session
     try:
@@ -301,7 +303,7 @@ def get_changes(brick, hash_dir, log_file, start, end, args):
         libgfchangelog.cl_register(brick, hash_dir, log_file,
                                    CHANGELOG_LOG_LEVEL, CHANGELOG_CONN_RETRIES)
     except libgfchangelog.ChangelogException as e:
-        fail("%s Changelog register failed: %s" % (brick, e), logger=logger)
+        fail(f"{brick} Changelog register failed: {e}", logger=logger)
 
     # Output files to record GFIDs and GFID to Path failure GFIDs
     changelog_data = ChangelogData(args.outfile, args)
@@ -314,8 +316,11 @@ def get_changes(brick, hash_dir, log_file, start, end, args):
         actual_end = libgfchangelog.cl_history_changelog(
             cl_path, start, end, CHANGELOGAPI_NUM_WORKERS)
     except libgfchangelog.ChangelogException as e:
-        fail("%s: %s Historical Changelogs not available: %s" %
-             (args.node, brick, e), logger=logger)
+        fail(
+            f"{args.node}: {brick} Historical Changelogs not available: {e}",
+            logger=logger,
+        )
+
 
     logger.info("[1/4] Starting changelog parsing ...")
     try:
@@ -332,19 +337,17 @@ def get_changes(brick, hash_dir, log_file, start, end, args):
             for change in changes:
                 # Ignore if last processed changelog comes
                 # again in list
-                if change.endswith(".%s" % start):
+                if change.endswith(f".{start}"):
                     continue
                 try:
                     parse_changelog_to_db(changelog_data, change, args)
                     libgfchangelog.cl_history_done(change)
                 except IOError as e:
-                    logger.warn("Error parsing changelog file %s: %s" %
-                                (change, e))
+                    logger.warn(f"Error parsing changelog file {change}: {e}")
 
             changelog_data.commit()
     except libgfchangelog.ChangelogException as e:
-        fail("%s Error during Changelog Crawl: %s" % (brick, e),
-             logger=logger)
+        fail(f"{brick} Error during Changelog Crawl: {e}", logger=logger)
 
     logger.info("[1/4] Finished changelog parsing.")
 
@@ -376,7 +379,7 @@ def changelog_crawl(brick, start, end, args):
     Init function, prepares working dir and calls Changelog query
     """
     if brick.endswith("/"):
-        brick = brick[0:len(brick)-1]
+        brick = brick[:-1]
 
     # WORKING_DIR/BRICKHASH/OUTFILE
     working_dir = os.path.dirname(args.outfile)
@@ -386,13 +389,15 @@ def changelog_crawl(brick, start, end, args):
 
     mkdirp(working_dir, exit_on_err=True, logger=logger)
 
-    log_file = os.path.join(conf.get_opt("log_dir"),
-                            args.session,
-                            args.volume,
-                            "changelog.%s.log" % brickhash)
+    log_file = os.path.join(
+        conf.get_opt("log_dir"),
+        args.session,
+        args.volume,
+        f"changelog.{brickhash}.log",
+    )
 
-    logger.info("%s Started Changelog Crawl. Start: %s, End: %s"
-                % (brick, start, end))
+
+    logger.info(f"{brick} Started Changelog Crawl. Start: {start}, End: {end}")
     return get_changes(brick, working_dir, log_file, start, end, args)
 
 
@@ -434,9 +439,11 @@ if __name__ == "__main__":
     setup_logger(logger, log_file, args.debug)
 
     session_dir = os.path.join(conf.get_opt("session_dir"), args.session)
-    status_file = os.path.join(session_dir, args.volume,
-                     "%s.status" % urllib.quote_plus(args.brick))
-    status_file_pre = status_file + ".pre"
+    status_file = os.path.join(
+        session_dir, args.volume, f"{urllib.quote_plus(args.brick)}.status"
+    )
+
+    status_file_pre = f"{status_file}.pre"
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
            logger=logger)
 
@@ -456,14 +463,14 @@ if __name__ == "__main__":
     if end == -1:
         end = int(time.time()) - get_changelog_rollover_time(args.volume)
 
-    logger.info("%s Started Changelog Crawl - Start: %s End: %s" % (args.brick,
-                                                                    start,
-                                                                    end))
+    logger.info(
+        f"{args.brick} Started Changelog Crawl - Start: {start} End: {end}"
+    )
+
     actual_end = changelog_crawl(args.brick, start, end, args)
     if not args.only_query:
         with open(status_file_pre, "w") as f:
             f.write(str(actual_end))
 
-    logger.info("%s Finished Changelog Crawl - End: %s" % (args.brick,
-                                                           actual_end))
+    logger.info(f"{args.brick} Finished Changelog Crawl - End: {actual_end}")
     sys.exit(0)

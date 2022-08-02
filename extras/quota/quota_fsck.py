@@ -72,10 +72,7 @@ def size_differs_lot(s1, s2):
     TODO: For a deeply nested directory, at higher levels in hierarchy
     differences may not be significant, hence this check needs to be improved.
     '''
-    if abs(s1-s2) > 0:
-        return True
-    else:
-        return False
+    return abs(s1-s2) > 0
 
 def fix_hardlink_accounting(curr_dict, accounted_dict, curr_size):
     '''
@@ -120,13 +117,13 @@ def fix_xattr(file_name, mark_dirty):
     if mnt_path is None:
         return
     if mark_dirty:
-        print("MARKING DIRTY: " + file_name)
+        print(f"MARKING DIRTY: {file_name}")
         out = subprocess.check_output (["/usr/bin/setfattr", "-n",
                                        "trusted.glusterfs.quota.dirty",
                                        "-v", IS_DIRTY, file_name])
     rel_path = os.path.relpath(file_name, brick_path)
-    print("stat on "  + mnt_path + "/" + rel_path)
-    stbuf = os.lstat(mnt_path + "/" + rel_path)
+    print(f"stat on {mnt_path}/{rel_path}")
+    stbuf = os.lstat(f"{mnt_path}/{rel_path}")
 
     obj_fix_count += 1
 
@@ -153,28 +150,25 @@ def get_quota_xattr_brick(dpath):
     eg:
     '''
 
-    xattr_dict = {}
-    xattr_dict['parents'] = {}
-
+    xattr_dict = {'parents': {}}
     for xattr in pairs[1:]:
         xattr = xattr.decode("utf-8")
         xattr_key = xattr.split("=")[0]
-        if xattr_key == "":
+        if (
+            xattr_key == ""
+            or xattr_key != ""
+            and not re.search("quota", xattr_key)
+        ):
             # skip any empty lines
             continue
-        elif not re.search("quota", xattr_key):
-            # skip all non quota xattr.
-            continue
-
         xattr_value = xattr.split("=")[1]
         if re.search("contri", xattr_key):
 
             xattr_version = xattr_key.split(".")[5]
             if 'version' not in xattr_dict:
                 xattr_dict['version'] = xattr_version
-            else:
-                if xattr_version != xattr_dict['version']:
-                   print("Multiple xattr version found")
+            elif xattr_version != xattr_dict['version']:
+                print("Multiple xattr version found")
 
 
             cur_parent = xattr_key.split(".")[3]
@@ -279,7 +273,7 @@ def walktree(t_dir, hard_link_dict):
         if S_ISDIR(stbuf.st_mode):
             # It's a directory, recurse into it
             if entry == '.glusterfs':
-                print("skipping " + pathname)
+                print(f"skipping {pathname}")
                 continue
             descendent_hardlinks = {}
             subtree_size = walktree(pathname, descendent_hardlinks)
@@ -288,7 +282,7 @@ def walktree(t_dir, hard_link_dict):
                                                    hard_link_dict,
                                                    subtree_size)
 
-            aggr_size[t_dir] = aggr_size[t_dir] + subtree_size
+            aggr_size[t_dir] += subtree_size
 
         elif S_ISREG(stbuf.st_mode) or S_ISLNK(stbuf.st_mode):
             # Even a symbolic link file may have multiple hardlinks.
@@ -316,7 +310,7 @@ def walktree(t_dir, hard_link_dict):
 
         else:
             # Unknown file type, print a message
-            print('Skipping %s, due to file mode' % (pathname))
+            print(f'Skipping {pathname}, due to file mode')
 
     if t_dir not in aggr_size:
         aggr_size[t_dir] = 0
@@ -371,7 +365,7 @@ if __name__ == '__main__':
     else:
         walktree(brick_path, hard_link_dict)
 
-    print("Files verified : " + str(file_count))
-    print("Directories verified : " + str(dir_count))
+    print(f"Files verified : {str(file_count)}")
+    print(f"Directories verified : {str(dir_count)}")
     if mnt_path is not None:
-        print("Objects Fixed : " + str(obj_fix_count))
+        print(f"Objects Fixed : {str(obj_fix_count)}")

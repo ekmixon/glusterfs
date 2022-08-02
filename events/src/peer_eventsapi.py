@@ -63,10 +63,10 @@ def handle_output_error(err, errcode=1, json_output=False):
 
 
 def file_content_overwrite(fname, data):
-    with open(fname + ".tmp", "w") as f:
+    with open(f"{fname}.tmp", "w") as f:
         f.write(json.dumps(data))
 
-    os.rename(fname + ".tmp", fname)
+    os.rename(f"{fname}.tmp", fname)
 
 
 def create_custom_config_file_if_not_exists(args):
@@ -74,8 +74,10 @@ def create_custom_config_file_if_not_exists(args):
         config_dir = os.path.dirname(CUSTOM_CONFIG_FILE)
         mkdirp(config_dir)
     except OSError as e:
-        handle_output_error("Failed to create dir %s: %s" % (config_dir, e),
-                            json_output=args.json)
+        handle_output_error(
+            f"Failed to create dir {config_dir}: {e}", json_output=args.json
+        )
+
 
     if not os.path.exists(CUSTOM_CONFIG_FILE):
         with open(CUSTOM_CONFIG_FILE, "w") as f:
@@ -87,8 +89,10 @@ def create_webhooks_file_if_not_exists(args):
         webhooks_dir = os.path.dirname(WEBHOOKS_FILE)
         mkdirp(webhooks_dir)
     except OSError as e:
-        handle_output_error("Failed to create dir %s: %s" % (webhooks_dir, e),
-                            json_output=args.json)
+        handle_output_error(
+            f"Failed to create dir {webhooks_dir}: {e}", json_output=args.json
+        )
+
 
     if not os.path.exists(WEBHOOKS_FILE):
         with open(WEBHOOKS_FILE, "w") as f:
@@ -96,10 +100,7 @@ def create_webhooks_file_if_not_exists(args):
 
 
 def boolify(value):
-    val = False
-    if value.lower() in ["enabled", "true", "on", "yes"]:
-        val = True
-    return val
+    return value.lower() in ["enabled", "true", "on", "yes"]
 
 
 def mkdirp(path, exit_on_err=False, logger=None):
@@ -122,11 +123,7 @@ def is_active():
             fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             state = False
     except (IOError, OSError) as e:
-        if e.errno in (EACCES, EAGAIN):
-            # cannot grab. so, process still running..move on
-            state = True
-        else:
-            state = False
+        state = e.errno in (EACCES, EAGAIN)
     return state
 
 
@@ -174,7 +171,7 @@ def sync_to_peers(args):
             sync_file_to_peers(WEBHOOKS_FILE_TO_SYNC)
         except GlusterCmdException as e:
             # Print stdout if stderr is empty
-            errmsg = e.args[0][2] if e.args[0][2] else e.args[0][1]
+            errmsg = e.args[0][2] or e.args[0][1]
             handle_output_error("Failed to sync Webhooks file: [Error: {0}]"
                                 "{1}".format(e.args[0][0], errmsg),
                                 errcode=ERROR_WEBHOOK_SYNC_FAILED,
@@ -185,7 +182,7 @@ def sync_to_peers(args):
             sync_file_to_peers(CUSTOM_CONFIG_FILE_TO_SYNC)
         except GlusterCmdException as e:
             # Print stdout if stderr is empty
-            errmsg = e.args[0][2] if e.args[0][2] else e.args[0][1]
+            errmsg = e.args[0][2] or e.args[0][1]
             handle_output_error("Failed to sync Config file: [Error: {0}]"
                                 "{1}".format(e.args[0][0], errmsg),
                                 errcode=ERROR_CONFIG_SYNC_FAILED,
@@ -230,19 +227,19 @@ def node_output_handle(resp):
 
 
 def action_handle(action, json_output=False):
-    out = execute_in_peers("node-" + action)
+    out = execute_in_peers(f"node-{action}")
     column_name = action.upper()
     if action == "status":
         column_name = EVENTSD.upper()
 
     if not json_output:
-        table = PrettyTable(["NODE", "NODE STATUS", column_name + " STATUS"])
+        table = PrettyTable(["NODE", "NODE STATUS", f"{column_name} STATUS"])
         table.align["NODE STATUS"] = "r"
-        table.align[column_name + " STATUS"] = "r"
+        table.align[f"{column_name} STATUS"] = "r"
 
     json_out = []
     if json_output:
-        rows_to_json(json_out, column_name.lower() + "_status", out)
+        rows_to_json(json_out, f"{column_name.lower()}_status", out)
     else:
         rows_to_table(table, out)
 
@@ -407,16 +404,12 @@ class NodeWebhookTestCmd(Cmd):
             hashval = get_jwt_token(args.secret, "TEST", int(time.time()))
 
         if hashval:
-            http_headers["Authorization"] = "Bearer " + hashval
+            http_headers["Authorization"] = f"Bearer {hashval}"
 
         urldata = requests.utils.urlparse(args.url)
         parts = urldata.netloc.split(":")
         domain = parts[0]
-        # Default https port if not specified
-        port = 443
-        if len(parts) == 2:
-            port = int(parts[1])
-
+        port = int(parts[1]) if len(parts) == 2 else 443
         cert_path = os.path.join(CERTS_DIR, args.url.replace("/", "_").strip())
         verify = True
         while True:
@@ -594,11 +587,7 @@ class ConfigSetCmd(Cmd):
             new_data[args.name] = v
             file_content_overwrite(CUSTOM_CONFIG_FILE, new_data)
 
-            # If any value changed which requires restart of REST server
-            restart = False
-            if args.name in RESTART_CONFIGS:
-                restart = True
-
+            restart = args.name in RESTART_CONFIGS
             if restart:
                 print ("\nRestart glustereventsd in all nodes")
 
@@ -623,16 +612,14 @@ class ConfigResetCmd(Cmd):
             # If No data available in custom config or, the specific config
             # item is not available in custom config
             if not data or \
-               (args.name != "all" and data.get(args.name, None) is None):
+                   (args.name != "all" and data.get(args.name, None) is None):
                 handle_output_error("Config value not reset. Already "
                                     "set to default value",
                                     errcode=ERROR_SAME_CONFIG,
                                     json_output=args.json)
 
             if args.name.lower() == "all":
-                for k, v in data.items():
-                    changed_keys.append(k)
-
+                changed_keys.extend(k for k, v in data.items())
                 # Reset all keys
                 file_content_overwrite(CUSTOM_CONFIG_FILE, {})
             else:
@@ -640,13 +627,7 @@ class ConfigResetCmd(Cmd):
                 del data[args.name]
                 file_content_overwrite(CUSTOM_CONFIG_FILE, data)
 
-            # If any value changed which requires restart of REST server
-            restart = False
-            for key in changed_keys:
-                if key in RESTART_CONFIGS:
-                    restart = True
-                    break
-
+            restart = any(key in RESTART_CONFIGS for key in changed_keys)
             if restart:
                 print ("\nRestart glustereventsd in all nodes")
 

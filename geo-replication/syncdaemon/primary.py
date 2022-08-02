@@ -54,8 +54,7 @@ def _xtime_now():
 
 def _volinfo_hook_relax_foreign(self):
     volinfo_sys = self.get_sys_volinfo()
-    fgn_vi = volinfo_sys[self.KFGN]
-    if fgn_vi:
+    if fgn_vi := volinfo_sys[self.KFGN]:
         expiry = fgn_vi['timeout'] - int(time.time()) + 1
         logging.info(lf('foreign volume info found, waiting for expiry',
                         expiry=expiry))
@@ -65,14 +64,9 @@ def _volinfo_hook_relax_foreign(self):
 
 
 def edct(op, **ed):
-    dct = {}
-    dct['op'] = op
-    # This is used in automatic gfid conflict resolution.
-    # When marked True, it's skipped during re-processing.
-    dct['skip_entry'] = False
-    for k in ed:
+    dct = {'op': op, 'skip_entry': False}
+    for k, st in ed.items():
         if k == 'stat':
-            st = ed[k]
             dst = dct['stat'] = {}
             if st:
                 dst['uid'] = st.st_uid
@@ -104,8 +98,8 @@ def gprimary_builder(excrawl=None):
 
     logging.debug(lf('setting up change detection mode',
                      mode=changemixin))
-    modemixin = getattr(this, modemixin.capitalize() + 'Mixin')
-    crawlmixin = getattr(this, 'GPrimary' + changemixin.capitalize() + 'Mixin')
+    modemixin = getattr(this, f'{modemixin.capitalize()}Mixin')
+    crawlmixin = getattr(this, f'GPrimary{changemixin.capitalize()}Mixin')
 
     if gconf.get("use-rsync-xattrs"):
         sendmarkmixin = SendmarkRsyncMixin
@@ -209,7 +203,7 @@ class NormalMixin(object):
 
     def xtime_reversion_hook(self, path, xtl, xtr):
         if xtr > xtl:
-            raise GsyncdError("timestamp corruption for " + path)
+            raise GsyncdError(f"timestamp corruption for {path}")
 
     def need_sync(self, e, xte, xtrd):
         return xte > xtrd
@@ -397,10 +391,7 @@ class GPrimaryCommon(object):
         depends on @opts and on subject of query (primary
         or secondary).
         """
-        if a:
-            rsc = a[0]
-        else:
-            rsc = self.primary
+        rsc = a[0] if a else self.primary
         self.make_xtime_opts(rsc == self.primary, opts)
         return self.xtime_low(rsc, path, **opts)
 
@@ -461,8 +452,11 @@ class GPrimaryCommon(object):
                 raise
 
         fd = None
-        bname = str(self.uuid) + "_" + rconf.args.secondary_id + "_subvol_" \
-            + str(rconf.args.subvol_num) + ".lock"
+        bname = (
+            f"{str(self.uuid)}_{rconf.args.secondary_id}_subvol_"
+            + str(rconf.args.subvol_num)
+        ) + ".lock"
+
         mgmt_lock_dir = os.path.join(gconf.get("meta-volume-mnt"), "geo-rep")
         path = os.path.join(mgmt_lock_dir, bname)
         logging.debug(lf("lock file path", path=path))
@@ -470,19 +464,16 @@ class GPrimaryCommon(object):
             fd = os.open(path, os.O_CREAT | os.O_RDWR)
         except OSError:
             ex = sys.exc_info()[1]
-            if ex.errno == ENOENT:
-                logging.info("Creating geo-rep directory in meta volume...")
-                try:
-                    os.makedirs(mgmt_lock_dir)
-                except OSError:
-                    ex = sys.exc_info()[1]
-                    if ex.errno == EEXIST:
-                        pass
-                    else:
-                        raise
-                fd = os.open(path, os.O_CREAT | os.O_RDWR)
-            else:
+            if ex.errno != ENOENT:
                 raise
+            logging.info("Creating geo-rep directory in meta volume...")
+            try:
+                os.makedirs(mgmt_lock_dir)
+            except OSError:
+                ex = sys.exc_info()[1]
+                if ex.errno != EEXIST:
+                    raise
+            fd = os.open(path, os.O_CREAT | os.O_RDWR)
         try:
             fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             # Save latest FD for future use
@@ -536,16 +527,16 @@ class GPrimaryCommon(object):
         volinfo_sys = self.volinfo_hook()
         self.volinfo = volinfo_sys[self.KNAT]
         inter_primary = volinfo_sys[self.KFGN]
-        logging.debug("%s primary with volume id %s ..." %
-                      (inter_primary and "intermediate" or "primary",
-                       self.uuid))
+        logging.debug(
+            f'{inter_primary and "intermediate" or "primary"} primary with volume id {self.uuid} ...'
+        )
+
         rconf.volume_id = self.uuid
-        if self.volinfo:
-            if self.volinfo['retval']:
-                logging.warn(lf("primary cluster's info may not be valid",
-                                error=self.volinfo['retval']))
-        else:
+        if not self.volinfo:
             raise GsyncdError("primary volinfo unavailable")
+        if self.volinfo['retval']:
+            logging.warn(lf("primary cluster's info may not be valid",
+                            error=self.volinfo['retval']))
         self.lastreport['time'] = time.time()
 
         t0 = time.time()
@@ -579,23 +570,25 @@ class GPrimaryCommon(object):
                                  cluster_stime=cluster_stime,
                                  brick_stime=brick_stime))
 
-                if not isinstance(cluster_stime, int):
-                    if brick_stime < cluster_stime:
-                        self.secondary.server.set_stime(
-                            self.FLAT_DIR_HIERARCHY, self.uuid, cluster_stime)
-                        self.upd_stime(cluster_stime)
-                        # Purge all changelogs available in processing dir
-                        # less than cluster_stime
-                        proc_dir = os.path.join(self.tempdir,
-                                                ".processing")
+                if (
+                    not isinstance(cluster_stime, int)
+                    and brick_stime < cluster_stime
+                ):
+                    self.secondary.server.set_stime(
+                        self.FLAT_DIR_HIERARCHY, self.uuid, cluster_stime)
+                    self.upd_stime(cluster_stime)
+                    # Purge all changelogs available in processing dir
+                    # less than cluster_stime
+                    proc_dir = os.path.join(self.tempdir,
+                                            ".processing")
 
-                        if os.path.exists(proc_dir):
-                            to_purge = [f for f in os.listdir(proc_dir)
-                                        if (f.startswith("CHANGELOG.") and
-                                            int(f.split('.')[-1]) <
-                                            cluster_stime[0])]
-                            for f in to_purge:
-                                os.remove(os.path.join(proc_dir, f))
+                    if os.path.exists(proc_dir):
+                        to_purge = [f for f in os.listdir(proc_dir)
+                                    if (f.startswith("CHANGELOG.") and
+                                        int(f.split('.')[-1]) <
+                                        cluster_stime[0])]
+                        for f in to_purge:
+                            os.remove(os.path.join(proc_dir, f))
 
                 time.sleep(5)
                 continue
@@ -611,9 +604,9 @@ class GPrimaryCommon(object):
     def humantime(*tpair):
         """format xtime-like (sec, nsec) pair to human readable format"""
         ts = datetime.fromtimestamp(float('.'.join(str(n) for n in tpair))).\
-            strftime("%Y-%m-%d %H:%M:%S")
+                strftime("%Y-%m-%d %H:%M:%S")
         if len(tpair) > 1:
-            ts += '.' + str(tpair[1])
+            ts += f'.{str(tpair[1])}'
         return ts
 
     def _crawl_time_format(self, crawl_time):
@@ -627,12 +620,11 @@ class GPrimaryCommon(object):
         h, m = divmod(m, 60)
 
         if years != 0:
-            date += "%s %s " % (years, "year" if years == 1 else "years")
+            date += f'{years} {"year" if years == 1 else "years"} '
         if days != 0:
-            date += "%s %s " % (days, "day" if days == 1 else "days")
+            date += f'{days} {"day" if days == 1 else "days"} '
 
-        date += "%s:%s:%s" % (string.zfill(h, 2),
-                              string.zfill(m, 2), string.zfill(s, 2))
+        date += f"{string.zfill(h, 2)}:{string.zfill(m, 2)}:{string.zfill(s, 2)}"
         return date
 
     def add_job(self, path, label, job, *a, **kw):
@@ -643,7 +635,7 @@ class GPrimaryCommon(object):
 
     def add_failjob(self, path, label):
         """invoke .add_job with a job that does nothing just fails"""
-        logging.debug('salvaged: ' + label)
+        logging.debug(f'salvaged: {label}')
         self.add_job(path, label, lambda: False)
 
     def wait(self, path, *args):
@@ -660,7 +652,7 @@ class GPrimaryCommon(object):
             ret = j[-1]()
             if not ret:
                 succeed = False
-        if succeed and not args[0] is None:
+        if succeed and args[0] is not None:
             self.sendmark(path, *args)
         return succeed
 
@@ -736,8 +728,10 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
         # Creates tar file instead of tar.gz, since changelogs will
         # be appended to existing tar. archive name is
         # archive_<YEAR><MONTH>.tar
-        archive_name = "archive_%s.tar" % datetime.today().strftime(
-            gconf.get("changelog-archive-format"))
+        archive_name = "archive_%s.tar" % datetime.now().strftime(
+            gconf.get("changelog-archive-format")
+        )
+
 
         try:
             tar = tarfile.open(os.path.join(self.processed_changelogs_dir,
@@ -755,12 +749,10 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
                         arcname=os.path.basename(f))
             except:
                 exc = sys.exc_info()[1]
-                if ((isinstance(exc, OSError) or
-                     isinstance(exc, IOError)) and exc.errno == ENOENT):
+                if isinstance(exc, (OSError, IOError)) and exc.errno == ENOENT:
                     continue
-                else:
-                    tar.close()
-                    raise
+                tar.close()
+                raise
         tar.close()
 
         for f in changelogs:
@@ -776,7 +768,7 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
     def setup_working_dir(self):
         workdir = os.path.join(gconf.get("working-dir"),
                                escape(rconf.args.local_path))
-        logging.debug('changelog working dir %s' % workdir)
+        logging.debug(f'changelog working dir {workdir}')
         return workdir
 
     def log_failures(self, failures, entry_key, gfid_prefix, log_prefix):
@@ -785,8 +777,7 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
             st = lstat(os.path.join(gfid_prefix, failure[0][entry_key]))
             if not isinstance(st, int):
                 num_failures += 1
-                logging.error(lf('%s FAILED' % log_prefix,
-                                 data=failure))
+                logging.error(lf(f'{log_prefix} FAILED', data=failure))
                 if failure[0]['op'] == 'MKDIR':
                     raise GsyncdError("The above directory failed to sync."
                                       " Please fix it to proceed further.")
@@ -834,13 +825,12 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
                         # rename entry and unlink src on secondary
                         st = lstat(os.path.join(pfx, failure[0]['gfid']))
                         if isinstance(st, int) and st == ENOENT:
-                            logging.debug("Unlink source %s" % repr(failure))
+                            logging.debug(f"Unlink source {repr(failure)}")
                             remove_gfids.add(failure[0]['gfid'])
                             fix_entry_ops.append(
                                 edct('UNLINK',
                                      gfid=failure[0]['gfid'],
                                      entry=failure[0]['entry']))
-                # Takes care of scenarios of hardlinks/renames on primary
                 elif not isinstance(st, int):
                     if matching_disk_gfid(secondary_gfid, pbname):
                         # Safe to ignore the failure as primary contains same
@@ -855,15 +845,17 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
                                 edct('UNLINK',
                                      gfid=failure[0]['gfid'],
                                      entry=failure[0]['entry']))
-                    # The file exists on primary but with different name.
-                    # Probably renamed and got missed during xsync crawl.
                     elif failure[2]['secondary_isdir']:
-                        realpath = os.readlink(os.path.join(
-                                               rconf.args.local_path,
-                                               ".glusterfs",
-                                               secondary_gfid[0:2],
-                                               secondary_gfid[2:4],
-                                               secondary_gfid))
+                        realpath = os.readlink(
+                            os.path.join(
+                                rconf.args.local_path,
+                                ".glusterfs",
+                                secondary_gfid[:2],
+                                secondary_gfid[2:4],
+                                secondary_gfid,
+                            )
+                        )
+
                         dst_entry = os.path.join(pfx, realpath.split('/')[-2],
                                                  realpath.split('/')[-1])
                         src_entry = pbname
@@ -907,11 +899,7 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
                                  gfid=failure[2]['secondary_gfid'],
                                  entry=pbname))
             elif failure[1] == ENOENT:
-                if op in ['RENAME']:
-                    pbname = failure[0]['entry1']
-                else:
-                    pbname = failure[0]['entry']
-
+                pbname = failure[0]['entry1'] if op in ['RENAME'] else failure[0]['entry']
                 pargfid = pbname.split('/')[1]
                 st = lstat(os.path.join(pfx, pargfid))
                 # Safe to ignore the failure as primary doesn't contain
@@ -931,23 +919,28 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
                                     'parent directory on secondary.',
                                     retry_count=retry_count,
                                     entry=repr(failure)))
-                    realpath = os.readlink(os.path.join(rconf.args.local_path,
-                                                        ".glusterfs",
-                                                        pargfid[0:2],
-                                                        pargfid[2:4],
-                                                        pargfid))
+                    realpath = os.readlink(
+                        os.path.join(
+                            rconf.args.local_path,
+                            ".glusterfs",
+                            pargfid[:2],
+                            pargfid[2:4],
+                            pargfid,
+                        )
+                    )
+
                     dir_entry = os.path.join(pfx, realpath.split('/')[-2],
                                              realpath.split('/')[-1])
                     fix_entry_ops.append(
                         edct('MKDIR', gfid=pargfid, entry=dir_entry,
                              mode=st.st_mode, uid=st.st_uid, gid=st.st_gid))
 
-        logging.debug("remove_gfids: %s" % repr(remove_gfids))
+        logging.debug(f"remove_gfids: {repr(remove_gfids)}")
         if remove_gfids:
             for e in entries:
                 if e['op'] in ['MKDIR', 'MKNOD', 'CREATE', 'RENAME'] \
-                   and e['gfid'] in remove_gfids:
-                    logging.debug("Removed entry op from retrial list: entry: %s" % repr(e))
+                       and e['gfid'] in remove_gfids:
+                    logging.debug(f"Removed entry op from retrial list: entry: {repr(e)}")
                     e['skip_entry'] = True
 
         if fix_entry_ops:
@@ -957,7 +950,6 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
         return (failures1, fix_entry_ops)
 
     def handle_entry_failures(self, failures, entries):
-        retries = 0
         pending_failures = False
         failures1 = []
         failures2 = []
@@ -969,6 +961,7 @@ class GPrimaryChangelogMixin(GPrimaryCommon):
             failures1 = failures
             entry_ops1 = entries
 
+            retries = 0
             while pending_failures and retries < self.MAX_EF_RETRIES:
                 retries += 1
                 (failures2, entry_ops2) = self.fix_possible_entry_failures(

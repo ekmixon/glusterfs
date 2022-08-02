@@ -131,9 +131,8 @@ class Server(object):
     @_pathguard
     def linkto_check(cls, path):
         try:
-            return not (
-                Xattr.lgetxattr_buf(path,
-                                    'trusted.glusterfs.dht.linkto') == '')
+            return Xattr.lgetxattr_buf(path, 'trusted.glusterfs.dht.linkto') != ''
+
         except (IOError, OSError):
             ex = sys.exc_info()[1]
             if ex.errno in (ENOENT, ENODATA):
@@ -148,11 +147,10 @@ class Server(object):
                          [ENOENT], [ESTALE, ENODATA])
         if buf == ENOENT:
             return buf
-        else:
-            buf = str_to_bytearray(buf)
-            m = re.match('(.{8})(.{4})(.{4})(.{4})(.{12})', "".join(
-                ['%02x' % x for x in struct.unpack(cls.GFID_FMTSTR, buf)]))
-            return '-'.join(m.groups())
+        buf = str_to_bytearray(buf)
+        m = re.match('(.{8})(.{4})(.{4})(.{4})(.{12})', "".join(
+            ['%02x' % x for x in struct.unpack(cls.GFID_FMTSTR, buf)]))
+        return '-'.join(m.groups())
 
     @classmethod
     @_pathguard
@@ -187,16 +185,15 @@ class Server(object):
                         raise
             except OSError:
                 ex = sys.exc_info()[1]
-                if ex.errno in (ENOTDIR, ENOENT, ELOOP):
-                    try:
-                        os.unlink(path)
+                if ex.errno not in (ENOTDIR, ENOENT, ELOOP):
+                    raise
+                try:
+                    os.unlink(path)
+                    return
+                except OSError:
+                    ex = sys.exc_info()[1]
+                    if ex.errno == ENOENT:
                         return
-                    except OSError:
-                        ex = sys.exc_info()[1]
-                        if ex.errno == ENOENT:
-                            return
-                        raise
-                else:
                     raise
         for e in entries:
             cls.purge(os.path.join(path, e))
@@ -378,7 +375,7 @@ class Server(object):
     @classmethod
     def entry_ops(cls, entries):
         pfx = gauxpfx()
-        logging.debug('entries: %s' % repr(entries))
+        logging.debug(f'entries: {repr(entries)}')
         dist_count = rconf.args.primary_dist_count
 
         def entry_purge(op, entry, gfid, e, uid, gid):
@@ -391,7 +388,7 @@ class Server(object):
             # If the entry or the gfid of the file to be deleted is not present
             # on secondary, we can ignore the unlink/rmdir
             if isinstance(lstat(entry), int) or \
-               isinstance(lstat(os.path.join(pfx, gfid)), int):
+                   isinstance(lstat(os.path.join(pfx, gfid)), int):
                 return
 
             if not matching_disk_gfid(gfid, entry):
@@ -430,13 +427,10 @@ class Server(object):
                 e['stat']['gid'] = gid
 
             if cmd_ret in [EEXIST, ESTALE]:
-                if dst:
-                    en = e['entry1']
-                else:
-                    en = e['entry']
+                en = e['entry1'] if dst else e['entry']
                 disk_gfid = get_gfid_from_mnt(en)
                 if isinstance(disk_gfid, str) and \
-                   e['gfid'] != disk_gfid:
+                       e['gfid'] != disk_gfid:
                     slv_entry_info['gfid_mismatch'] = True
                     st = lstat(en)
                     if not isinstance(st, int):
@@ -540,8 +534,7 @@ class Server(object):
                                           os.path.join(pg, bname)],
                                          [], [ENOTEMPTY, ESTALE, ENODATA])
                         if not isinstance(er1, int):
-                            logging.debug("Removed %s => %s/%s recursively" %
-                                          (gfid, pg, bname))
+                            logging.debug(f"Removed {gfid} => {pg}/{bname} recursively")
                         else:
                             logging.warn(lf("Recursive remove failed",
                                             gfid=gfid,
@@ -720,7 +713,7 @@ class Server(object):
 
     @classmethod
     def meta_ops(cls, meta_entries):
-        logging.debug('Meta-entries: %s' % repr(meta_entries))
+        logging.debug(f'Meta-entries: {repr(meta_entries)}')
         failures = []
         for e in meta_entries:
             mode = e['stat']['mode']
@@ -773,14 +766,11 @@ class Server(object):
         keys are looked for and values used to perform
         chown, chmod or utimes on @path.
         """
-        own = adct.get('own')
-        if own:
+        if own := adct.get('own'):
             os.lchown(path, *own)
-        mode = adct.get('mode')
-        if mode:
+        if mode := adct.get('mode'):
             os.chmod(path, stat.S_IMODE(mode))
-        times = adct.get('times')
-        if times:
+        if times := adct.get('times'):
             os.utime(path, times)
 
     @staticmethod
@@ -801,13 +791,20 @@ class Server(object):
         """
         if dct:
             key = '.'.join([cls.GX_NSPACE, 'volume-mark', dct['uuid']])
-            val = struct.pack(cls.FRGN_FMTSTR,
-                              *(dct['version'] +
-                                tuple(int(x, 16)
-                                      for x in re.findall('(?:[\da-f]){2}',
-                                                          dct['uuid'])) +
-                                (dct['retval'],) + dct['volume_mark'][0:2] + (
-                                    dct['timeout'],)))
+            val = struct.pack(
+                cls.FRGN_FMTSTR,
+                *(
+                    dct['version']
+                    + tuple(
+                        int(x, 16)
+                        for x in re.findall('(?:[\da-f]){2}', dct['uuid'])
+                    )
+                    + (dct['retval'],)
+                    + dct['volume_mark'][:2]
+                )
+                + (dct['timeout'],)
+            )
+
             Xattr.lsetxattr('.', key, val)
         cls.last_keep_alive += 1
         return cls.last_keep_alive
@@ -862,8 +859,7 @@ class Mounter(object):
         filesystem.
         """
         mpi, mpo = pipe()
-        mh = Popen.fork()
-        if mh:
+        if mh := Popen.fork():
             # Parent
             os.close(mpi)
             fcntl.fcntl(mpo, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
@@ -890,10 +886,7 @@ class Mounter(object):
             t = syncdutils.Thread(target=lambda: os.chdir(d))
             t.start()
             tlim = rconf.starttime + gconf.get("connection-timeout")
-            while True:
-                if not t.is_alive():
-                    break
-
+            while t.is_alive():
                 if time.time() >= tlim:
                     syncdutils.finalize(exval=1)
                 time.sleep(1)
@@ -901,7 +894,7 @@ class Mounter(object):
             _, rv = syncdutils.waitpid(mh, 0)
             if rv:
                 rv = (os.WIFEXITED(rv) and os.WEXITSTATUS(rv) or 0) - \
-                     (os.WIFSIGNALED(rv) and os.WTERMSIG(rv) or 0)
+                         (os.WIFSIGNALED(rv) and os.WTERMSIG(rv) or 0)
                 logging.warn(lf('stale mount possibly left behind',
                                 path=d))
                 raise GsyncdError("cleaning up temp mountpoint %s "
@@ -915,10 +908,10 @@ class Mounter(object):
                 mntdata = ''
                 while True:
                     c = os.read(mpi, 1)
-                    c = c.decode()
-                    if not c:
+                    if c := c.decode():
+                        mntdata += c
+                    else:
                         break
-                    mntdata += c
                 if mntdata:
                     mounted = False
                     if mntdata[-1] == 'M':
@@ -929,15 +922,16 @@ class Mounter(object):
                     mntpt = mntdata[:-1]
                     assert(mntpt)
 
-                    umount_primary = False
-                    umount_secondary = False
-                    if rconf.args.subcmd == "worker" \
-                       and not unshare_propagation_supported() \
-                       and not gconf.get("access-mount"):
-                        umount_primary = True
-                    if rconf.args.subcmd == "secondary" \
-                       and not gconf.get("secondary-access-mount"):
-                        umount_secondary = True
+                    umount_primary = (
+                        rconf.args.subcmd == "worker"
+                        and not unshare_propagation_supported()
+                        and not gconf.get("access-mount")
+                    )
+
+                    umount_secondary = (
+                        rconf.args.subcmd == "secondary"
+                        and not gconf.get("secondary-access-mount")
+                    )
 
                     if mounted and (umount_primary or umount_secondary):
                         po = self.umount_l(mntpt)
@@ -945,7 +939,7 @@ class Mounter(object):
                         if po.returncode != 0:
                             po.errlog()
                             rv = po.returncode
-                        logging.debug("Lazy umount done: %s" % mntpt)
+                        logging.debug(f"Lazy umount done: {mntpt}")
                     if umount_primary or umount_secondary:
                         self.cleanup_mntpt(mntpt)
             except:
@@ -979,8 +973,9 @@ class DirectMounter(Mounter):
     def make_mount_argv(self, label=None):
         self.mntpt = tempfile.mkdtemp(prefix='gsyncd-aux-mount-')
         rconf.mount_point = self.mntpt
-        return [self.get_glusterprog()] + \
-            ['--' + p for p in self.params] + [self.mntpt]
+        return ([self.get_glusterprog()] + [f'--{p}' for p in self.params]) + [
+            self.mntpt
+        ]
 
     def cleanup_mntpt(self, mntpt=None):
         if not mntpt:
@@ -1040,15 +1035,14 @@ class GLUSTERServer(Server):
             '(.{8})(.{4})(.{4})(.{4})(.{12})',
             "".join(['%02x' % x for x in vm[2:18]]))
         uuid = '-'.join(m.groups())
-        volinfo = {'version': vm[0:2],
-                   'uuid': uuid,
-                   'retval': vm[18],
-                   'volume_mark': vm[19:21],
-                   }
-        if extra_fields:
-            return volinfo, vm[-len(extra_fields):]
-        else:
-            return volinfo
+        volinfo = {
+            'version': vm[:2],
+            'uuid': uuid,
+            'retval': vm[18],
+            'volume_mark': vm[19:21],
+        }
+
+        return (volinfo, vm[-len(extra_fields):]) if extra_fields else volinfo
 
     @classmethod
     def foreign_volume_infos(cls):
@@ -1097,7 +1091,7 @@ class GLUSTER(object):
     server = GLUSTERServer
 
     def __init__(self, host, volume):
-        self.path = "%s:%s" % (host, volume)
+        self.path = f"{host}:{volume}"
         self.host = host
         self.volume = volume
 
@@ -1129,10 +1123,11 @@ class GLUSTER(object):
         if rconf.args.subcmd == "secondary":
             log_level = gconf.get("secondary-gluster-log-level")
 
-        params = gconf.get("gluster-params").split() + \
-            ['log-level=' + log_level] + \
-            ['log-file=' + log_file, 'volfile-server=' + self.host] + \
-            ['volfile-id=' + self.volume, 'client-pid=-1']
+        params = (
+            (gconf.get("gluster-params").split() + [f'log-level={log_level}'])
+            + [f'log-file={log_file}', f'volfile-server={self.host}']
+        ) + [f'volfile-id={self.volume}', 'client-pid=-1']
+
 
         self.mounter = mounter(params)
         self.mounter.inhibit(label)

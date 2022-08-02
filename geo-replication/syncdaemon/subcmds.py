@@ -50,7 +50,7 @@ def subcmd_status(args):
 def subcmd_monitor(args):
     import monitor
     from resource import GLUSTER, SSH, Popen
-    go_daemon = False if args.debug else True
+    go_daemon = not args.debug
 
     monitor.startup(go_daemon)
     Popen.init_errhandler()
@@ -77,7 +77,7 @@ def subcmd_worker(args):
     if "@" not in secondary_url:
         secondaryhost = args.resource_remote
     else:
-        secondaryhost = "%s@%s" % (secondary_url.split("@")[0], args.resource_remote)
+        secondaryhost = f'{secondary_url.split("@")[0]}@{args.resource_remote}'
     remote = SSH(secondaryhost, secondaryvol)
     remote.connect_remote()
     local.connect()
@@ -103,8 +103,15 @@ def subcmd_voluuidget(args):
 
     ParseError = XET.ParseError if hasattr(XET, 'ParseError') else SyntaxError
 
-    cmd = ['gluster', '--xml', '--remote-host=' + args.host,
-           'volume', 'info', args.volname]
+    cmd = [
+        'gluster',
+        '--xml',
+        f'--remote-host={args.host}',
+        'volume',
+        'info',
+        args.volname,
+    ]
+
 
     if args.inet6:
         cmd.append("--inet6")
@@ -153,10 +160,8 @@ def _unlink(path):
     try:
         os.unlink(path)
     except (OSError, IOError):
-        if sys.exc_info()[1].errno == ENOENT:
-            pass
-        else:
-            raise GsyncdError('Unlink error: %s' % path)
+        if sys.exc_info()[1].errno != ENOENT:
+            raise GsyncdError(f'Unlink error: {path}')
 
 
 def subcmd_delete(args):
@@ -176,34 +181,30 @@ def subcmd_delete(args):
     stime_xattr_prefix = gconf.get('stime-xattr-prefix', None)
 
     # Delete pid file, status file, socket file
-    cleanup_paths = []
-    cleanup_paths.append(gconf.get("pid-file"))
-
+    cleanup_paths = [gconf.get("pid-file")]
     # Cleanup Session dir
     try:
         shutil.rmtree(gconf.get("georep-session-working-dir"))
     except (IOError, OSError):
-        if sys.exc_info()[1].errno == ENOENT:
-            pass
-        else:
+        if sys.exc_info()[1].errno != ENOENT:
             raise GsyncdError(
-                'Error while removing working dir: %s' %
-                gconf.get("georep-session-working-dir"))
+                f'Error while removing working dir: {gconf.get("georep-session-working-dir")}'
+            )
+
 
     # Cleanup changelog working dirs
     try:
         shutil.rmtree(gconf.get("working-dir"))
     except (IOError, OSError):
-        if sys.exc_info()[1].errno == ENOENT:
-            pass
-        else:
+        if sys.exc_info()[1].errno != ENOENT:
             raise GsyncdError(
-                'Error while removing working dir: %s' %
-                gconf.get("working-dir"))
+                f'Error while removing working dir: {gconf.get("working-dir")}'
+            )
+
 
     for path in cleanup_paths:
         # To delete temp files
-        for f in glob.glob(path + "*"):
+        for f in glob.glob(f"{path}*"):
             _unlink(f)
 
     if args.reset_sync_time and stime_xattr_prefix:
@@ -212,13 +213,22 @@ def subcmd_delete(args):
                 # set stime to (0,0) to trigger full volume content resync
                 # to secondary on session recreation
                 # look at primary.py::Xcrawl   hint: zero_zero
-                errno_wrap(Xattr.lsetxattr,
-                           (p, stime_xattr_prefix + ".stime",
-                            struct.pack("!II", 0, 0)),
-                           [ENOENT, ENODATA])
-                errno_wrap(Xattr.lremovexattr,
-                           (p, stime_xattr_prefix + ".entry_stime"),
-                           [ENOENT, ENODATA])
+                errno_wrap(
+                    Xattr.lsetxattr,
+                    (
+                        p,
+                        f"{stime_xattr_prefix}.stime",
+                        struct.pack("!II", 0, 0),
+                    ),
+                    [ENOENT, ENODATA],
+                )
+
+                errno_wrap(
+                    Xattr.lremovexattr,
+                    (p, f"{stime_xattr_prefix}.entry_stime"),
+                    [ENOENT, ENODATA],
+                )
+
 
     return
 
@@ -234,7 +244,7 @@ def print_config(name, value, only_value=False, use_underscore=False):
         if use_underscore:
             name = name.replace("-", "_")
 
-        print(("%s:%s" % (name, val)))
+        print(f"{name}:{val}")
 
 
 def config_name_format(val):

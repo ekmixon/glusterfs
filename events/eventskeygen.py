@@ -229,7 +229,7 @@ if gen_header_type == "C_HEADER":
         f.write("} eventtypes_t;\n")
         f.write("\n#endif /* __EVENTTYPES_H__ */\n")
 
-if gen_header_type == "PY_HEADER":
+elif gen_header_type == "PY_HEADER":
     # Generate eventtypes.py
     with open(eventtypes_py, "w") as f:
         f.write("# -*- coding: utf-8 -*-\n")

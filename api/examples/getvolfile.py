@@ -26,9 +26,7 @@ def get_volfile(host, volume):
         vbuf = ctypes.create_string_buffer(vlen)
         vlen = api.glfs_get_volfile(fs, vbuf, vlen)
     api.glfs_fini(fs)
-    if vlen <= 0:
-        return vlen
-    return vbuf.value[:vlen]
+    return vlen if vlen <= 0 else vbuf.value[:vlen]
 
 if __name__ == "__main__":
     import sys
@@ -42,4 +40,4 @@ if __name__ == "__main__":
         for line in res.split('\n'):
             print(line)
     except:
-        print("bad return value %s" % res)
+        print(f"bad return value {res}")

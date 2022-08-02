@@ -64,20 +64,14 @@ def os_wr(dest, data):
 
 
 def create_sparse_file(fil, size, mins, maxs, rand):
-    if rand:
-        size = random.randint(mins, maxs)
-    else:
-        size = size
+    size = random.randint(mins, maxs) if rand else size
     data = os_rd("/dev/zero", size)
     os_wr(fil, data)
     return
 
 
 def create_binary_file(fil, size, mins, maxs, rand):
-    if rand:
-        size = random.randint(mins, maxs)
-    else:
-        size = size
+    size = random.randint(mins, maxs) if rand else size
     data = os_rd("/dev/urandom", size)
     os_wr(fil, data)
     return
@@ -101,13 +95,10 @@ def create_txt_file(fil, size, mins, maxs, rand):
 
 
 def create_tar_file(fil, size, mins, maxs, rand):
-    if rand:
-        size = random.randint(mins, maxs)
-    else:
-        size = size
+    size = random.randint(mins, maxs) if rand else size
     data = os_rd("/dev/urandom", size)
     os_wr(fil, data)
-    tar = tarfile.open(fil+".tar.gz",  "w:gz")
+    tar = tarfile.open(f"{fil}.tar.gz", "w:gz")
     tar.add(fil)
     tar.close()
     os.unlink(fil)
@@ -117,9 +108,9 @@ def create_tar_file(fil, size, mins, maxs, rand):
 def get_filename(flen):
     size = flen
     char = get_ascii_upper_alpha_digits()
-    st = ''.join(random.choice(char) for i in range(size))
+    st = ''.join(random.choice(char) for _ in range(size))
     ti = str((hex(int(str(time.time()).split('.')[0])))[2:])
-    return ti+"%%"+st
+    return f"{ti}%%{st}"
 
 
 def text_files(files, file_count, inter, size, mins, maxs, rand,
@@ -127,11 +118,13 @@ def text_files(files, file_count, inter, size, mins, maxs, rand,
     global datsiz, timr
     for k in range(files):
         if not file_count % inter:
-            logger.info("Total files created -- "+str(file_count))
-        if not randname:
-            fil = dir_path+"/"+"file"+str(k)
-        else:
-            fil = dir_path+"/"+get_filename(flen)
+            logger.info(f"Total files created -- {str(file_count)}")
+        fil = (
+            f"{dir_path}/{get_filename(flen)}"
+            if randname
+            else f"{dir_path}/file{str(k)}"
+        )
+
         create_txt_file(fil, size, mins, maxs, rand)
         file_count += 1
     return file_count
@@ -141,11 +134,13 @@ def sparse_files(files, file_count, inter, size, mins, maxs,
                  rand, flen, randname, dir_path):
     for k in range(files):
         if not file_count % inter:
-            logger.info("Total files created -- "+str(file_count))
-        if not randname:
-            fil = dir_path+"/"+"file"+str(k)
-        else:
-            fil = dir_path+"/"+get_filename(flen)
+            logger.info(f"Total files created -- {str(file_count)}")
+        fil = (
+            f"{dir_path}/{get_filename(flen)}"
+            if randname
+            else f"{dir_path}/file{str(k)}"
+        )
+
         create_sparse_file(fil, size, mins, maxs, rand)
         file_count += 1
     return file_count
@@ -155,11 +150,13 @@ def binary_files(files, file_count, inter, size, mins, maxs,
                  rand, flen, randname, dir_path):
     for k in range(files):
         if not file_count % inter:
-            logger.info("Total files created -- "+str(file_count))
-        if not randname:
-            fil = dir_path+"/"+"file"+str(k)
-        else:
-            fil = dir_path+"/"+get_filename(flen)
+            logger.info(f"Total files created -- {str(file_count)}")
+        fil = (
+            f"{dir_path}/{get_filename(flen)}"
+            if randname
+            else f"{dir_path}/file{str(k)}"
+        )
+
         create_binary_file(fil, size, mins, maxs, rand)
         file_count += 1
     return file_count
@@ -169,11 +166,13 @@ def tar_files(files, file_count, inter, size, mins, maxs,
               rand, flen, randname, dir_path):
     for k in range(files):
         if not file_count % inter:
-            logger.info("Total files created -- "+str(file_count))
-        if not randname:
-            fil = dir_path+"/"+"file"+str(k)
-        else:
-            fil = dir_path+"/"+get_filename(flen)
+            logger.info(f"Total files created -- {str(file_count)}")
+        fil = (
+            f"{dir_path}/{get_filename(flen)}"
+            if randname
+            else f"{dir_path}/file{str(k)}"
+        )
+
         create_tar_file(fil, size, mins, maxs, rand)
         file_count += 1
     return file_count
@@ -183,30 +182,28 @@ def setxattr_files(files, randname, dir_path):
     char = get_ascii_upper_alpha_digits()
     if not randname:
         for k in range(files):
-            v = ''.join(random.choice(char) for i in range(10))
-            n = "user."+v
-            xattr.setxattr(dir_path+"/"+"file"+str(k), n, v)
+            v = ''.join(random.choice(char) for _ in range(10))
+            n = f"user.{v}"
+            xattr.setxattr(f"{dir_path}/file{str(k)}", n, v)
     else:
-        dirs = os.listdir(dir_path+"/")
+        dirs = os.listdir(f"{dir_path}/")
         for fil in dirs:
-            v = ''.join(random.choice(char) for i in range(10))
-            n = "user."+v
-            xattr.setxattr(dir_path+"/"+fil, n, v)
+            v = ''.join(random.choice(char) for _ in range(10))
+            n = f"user.{v}"
+            xattr.setxattr(f"{dir_path}/{fil}", n, v)
     return
 
 
 def rename_files(files, flen, randname, dir_path):
     if not randname:
         for k in range(files):
-            os.rename(dir_path + "/" + "file" + str(k),
-                      dir_path + "/" + "file" + str(files+k))
+            os.rename(f"{dir_path}/file{str(k)}", f"{dir_path}/file{str(files+k)}")
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
             if not os.path.isdir(fil):
                 newfil = get_filename(flen)
-                os.rename(dir_path + "/" + fil,
-                          dir_path + "/" + newfil)
+                os.rename(f"{dir_path}/{fil}", f"{dir_path}/{newfil}")
     return
 
 
@@ -214,15 +211,15 @@ def truncate_files(files, mins, maxs, randname, dir_path):
     if not randname:
         for k in range(files):
             byts = random.randint(mins, maxs)
-            fd = os.open(dir_path + "/" + "file" + str(k), os.O_WRONLY)
+            fd = os.open(f"{dir_path}/file{str(k)}", os.O_WRONLY)
             os.ftruncate(fd, byts)
             os.close(fd)
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
-            if not os.path.isdir(dir_path+"/"+fil):
+            if not os.path.isdir(f"{dir_path}/{fil}"):
                 byts = random.randint(mins, maxs)
-                fd = os.open(dir_path+"/"+fil, os.O_WRONLY)
+                fd = os.open(f"{dir_path}/{fil}", os.O_WRONLY)
                 os.ftruncate(fd, byts)
                 os.close(fd)
     return
@@ -232,12 +229,12 @@ def chmod_files(files, flen, randname, dir_path):
     if not randname:
         for k in range(files):
             mod = random.randint(0, 511)
-            os.chmod(dir_path+"/"+"file"+str(k), mod)
+            os.chmod(f"{dir_path}/file{str(k)}", mod)
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
             mod = random.randint(0, 511)
-            os.chmod(dir_path+"/"+fil, mod)
+            os.chmod(f"{dir_path}/{fil}", mod)
     return
 
 def random_og(path):
@@ -248,63 +245,67 @@ def random_og(path):
 def chown_files(files, flen, randname, dir_path):
     if not randname:
         for k in range(files):
-            random_og(dir_path+"/"+"file"+str(k))
+            random_og(f"{dir_path}/file{str(k)}")
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
-            random_og(dir_path+"/"+fil)
+            random_og(f"{dir_path}/{fil}")
     return
 
 
 def chgrp_files(files, flen, randname, dir_path):
     if not randname:
         for k in range(files):
-            random_og(dir_path+"/"+"file"+str(k))
+            random_og(f"{dir_path}/file{str(k)}")
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
-            random_og(dir_path+"/"+fil)
+            random_og(f"{dir_path}/{fil}")
     return
 
 
 def symlink_files(files, flen, randname, dir_path):
     try:
-        os.makedirs(dir_path+"/"+"symlink_to_files")
+        os.makedirs(f"{dir_path}/symlink_to_files")
     except OSError as ex:
         if ex.errno is not errno.EEXIST:
             raise
     if not randname:
         for k in range(files):
-            src_file = "file"+str(k)
-            os.symlink(dir_path+"/"+src_file,
-                       dir_path+"/"+"symlink_to_files/file"+str(k)+"_sym")
+            src_file = f"file{str(k)}"
+            os.symlink(
+                f"{dir_path}/{src_file}",
+                f"{dir_path}/symlink_to_files/file{str(k)}_sym",
+            )
+
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
             newfil = get_filename(flen)
-            os.symlink(dir_path+"/"+fil,
-                       dir_path+"/"+"symlink_to_files/"+newfil)
+            os.symlink(f"{dir_path}/{fil}", f"{dir_path}/symlink_to_files/{newfil}")
     return
 
 
 def hardlink_files(files, flen, randname, dir_path):
     try:
-        os.makedirs(dir_path+"/"+"hardlink_to_files")
+        os.makedirs(f"{dir_path}/hardlink_to_files")
     except OSError as ex:
         if ex.errno is not errno.EEXIST:
             raise
     if not randname:
         for k in range(files):
-            src_file = "file"+str(k)
-            os.link(dir_path+"/"+src_file,
-                    dir_path+"/"+"hardlink_to_files/file"+str(k)+"_hard")
+            src_file = f"file{str(k)}"
+            os.link(
+                f"{dir_path}/{src_file}",
+                f"{dir_path}/hardlink_to_files/file{str(k)}_hard",
+            )
+
     else:
         dirs = os.listdir(dir_path)
         for fil in dirs:
-            if not os.path.isdir(dir_path+"/"+fil):
+            if not os.path.isdir(f"{dir_path}/{fil}"):
                 newfil = get_filename(flen)
-                os.link(dir_path+"/"+fil,
-                        dir_path+"/"+"hardlink_to_files/"+newfil)
+                os.link(f"{dir_path}/{fil}", f"{dir_path}/hardlink_to_files/{newfil}")
     return
 
 
@@ -350,7 +351,7 @@ def multipledir(mnt_pnt, brdth, depth, files, fop, file_type="text",
     for i in range(brdth):
         dir_path = mnt_pnt
         for j in range(depth):
-            dir_path = dir_path+"/"+"level"+str(j)+str(i)
+            dir_path = f"{dir_path}/level{str(j)}{str(i)}"
             try:
                 os.makedirs(dir_path)
             except OSError as ex:
@@ -358,7 +359,7 @@ def multipledir(mnt_pnt, brdth, depth, files, fop, file_type="text",
                     raise
 
             if fop == "create":
-                logger.info("Entering the directory level"+str(j)+str(i))
+                logger.info(f"Entering the directory level{str(j)}{str(i)}")
                 if file_type == "text":
                     files_count = text_files(files, files_count, inter, size,
                                              mins, maxs, rand, l, randname,
@@ -487,7 +488,7 @@ def singledir(mnt_pnt, files, fop, file_type="text", inter="1000", size="100K",
         logger.info("Started renaming files for the files 0 to " +
                     str(files) + "...")
         rename_files(files, l, randname, mnt_pnt)
-        logger.info("Finished renaming files for the files 0 to "+str(files))
+        logger.info(f"Finished renaming files for the files 0 to {str(files)}")
 
     elif fop == "chmod":
         logger.info("Started changing permission for the files 0 to " +
@@ -525,14 +526,14 @@ def singledir(mnt_pnt, files, fop, file_type="text", inter="1000", size="100K",
                     str(files))
 
     elif fop == "truncate":
-        logger.info("Started truncating the files 0 to " + str(files)+"...")
+        logger.info(f"Started truncating the files 0 to {str(files)}...")
         truncate_files(files, mins, maxs, randname, mnt_pnt)
-        logger.info("Finished truncating the files 0 to " + str(files))
+        logger.info(f"Finished truncating the files 0 to {str(files)}")
 
     elif fop == "setxattr":
-        logger.info("Started setxattr to the files 0 to " + str(files)+"...")
+        logger.info(f"Started setxattr to the files 0 to {str(files)}...")
         setxattr_files(files, randname, mnt_pnt)
-        logger.info("Finished setxattr to the files 0 to " + str(files))
+        logger.info(f"Finished setxattr to the files 0 to {str(files)}")
 
 
 if __name__ == '__main__':

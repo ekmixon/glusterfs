@@ -2,7 +2,10 @@
 
 def launch():
     if len(sys.argv) < 3:
-        sys.stderr.write("Syntax: {} <pid> <count> [<dir>]\n".format(os.path.basename(sys.argv[0])))
+        sys.stderr.write(
+            f"Syntax: {os.path.basename(sys.argv[0])} <pid> <count> [<dir>]\n"
+        )
+
         sys.exit(1)
 
     pid = int(sys.argv[1])
@@ -12,13 +15,20 @@ def launch():
         base = sys.argv[3]
     base = os.path.realpath(base)
 
-    subprocess.run([
-        "gdb", "-batch",
-        "-p", str(pid),
-        "-ex", "py arg_count = {}".format(count),
-        "-ex", "py arg_dir = '{}'".format(base),
-        "-x", __file__
-    ])
+    subprocess.run(
+        [
+            "gdb",
+            "-batch",
+            "-p",
+            str(pid),
+            "-ex",
+            f"py arg_count = {count}",
+            "-ex",
+            f"py arg_dir = '{base}'",
+            "-x",
+            __file__,
+        ]
+    )
 
 class GFCore(object):
     def __init__(self, count, base):
@@ -44,9 +54,9 @@ class GFCore(object):
             if event.stop_signal == 'SIGCONT':
                 now = datetime.utcnow().isoformat()
                 pid = gdb.selected_inferior().pid
-                name = "{}/gfcore.{}.{}".format(self.base, pid, now)
-                print("Generating coredump '{}'".format(name))
-                gdb.execute('gcore {}'.format(name))
+                name = f"{self.base}/gfcore.{pid}.{now}"
+                print(f"Generating coredump '{name}'")
+                gdb.execute(f'gcore {name}')
                 self.count -= 1
 
             elif event.stop_signal == 'SIGINT':
@@ -54,9 +64,9 @@ class GFCore(object):
                 quit = True
 
             else:
-                print("Ignoring signal {}".format(event.stop_signal))
+                print(f"Ignoring signal {event.stop_signal}")
         else:
-            print("Unexpected event {}".format(type(event)))
+            print(f"Unexpected event {type(event)}")
 
         self.cont(quit)
 

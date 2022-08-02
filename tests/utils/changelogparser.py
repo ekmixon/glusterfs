@@ -74,35 +74,35 @@ class Version:
 
 class Record(object):
     def __init__(self, **kwargs):
-        self.ts = kwargs.get("ts", None)
-        self.fop_type = kwargs.get("fop_type", None)
-        self.gfid = kwargs.get("gfid", None)
-        self.path = kwargs.get("path", None)
-        self.fop = kwargs.get("fop", None)
-        self.path1 = kwargs.get("path1", None)
-        self.path2 = kwargs.get("path2", None)
-        self.mode = kwargs.get("mode", None)
-        self.uid = kwargs.get("uid", None)
-        self.gid = kwargs.get("gid", None)
+        self.ts = kwargs.get("ts")
+        self.fop_type = kwargs.get("fop_type")
+        self.gfid = kwargs.get("gfid")
+        self.path = kwargs.get("path")
+        self.fop = kwargs.get("fop")
+        self.path1 = kwargs.get("path1")
+        self.path2 = kwargs.get("path2")
+        self.mode = kwargs.get("mode")
+        self.uid = kwargs.get("uid")
+        self.gid = kwargs.get("gid")
 
     def create_mknod_mkdir(self, **kwargs):
-        self.path = kwargs.get("path", None)
-        self.fop = kwargs.get("fop", None)
-        self.mode = kwargs.get("mode", None)
-        self.uid = kwargs.get("uid", None)
-        self.gid = kwargs.get("gid", None)
+        self.path = kwargs.get("path")
+        self.fop = kwargs.get("fop")
+        self.mode = kwargs.get("mode")
+        self.uid = kwargs.get("uid")
+        self.gid = kwargs.get("gid")
 
     def metadata(self, **kwargs):
-        self.fop = kwargs.get("fop", None)
+        self.fop = kwargs.get("fop")
 
     def rename(self, **kwargs):
-        self.fop = kwargs.get("fop", None)
-        self.path1 = kwargs.get("path1", None)
-        self.path2 = kwargs.get("path2", None)
+        self.fop = kwargs.get("fop")
+        self.path1 = kwargs.get("path1")
+        self.path2 = kwargs.get("path2")
 
     def link_symlink_unlink_rmdir(self, **kwargs):
-        self.path = kwargs.get("path", None)
-        self.fop = kwargs.get("fop", None)
+        self.path = kwargs.get("path")
+        self.fop = kwargs.get("fop")
 
     def __unicode__(self):
         if self.fop_type == "D":
@@ -140,13 +140,12 @@ def get_num_tokens(data, tokens, version=Version.V11):
         sys.stderr.write("Unknown Changelog Version\n")
         sys.exit(1)
 
-    if data[tokens[0]] in [ENTRY, META]:
-        if len(tokens) >= 3:
-            return getattr(cls_numtokens, GF_FOP[int(data[tokens[2]])])
-        else:
-            return None
-    else:
+    if data[tokens[0]] not in [ENTRY, META]:
         return getattr(cls_numtokens, data[tokens[0]])
+    if len(tokens) >= 3:
+        return getattr(cls_numtokens, GF_FOP[int(data[tokens[2]])])
+    else:
+        return None
 
 
 def process_record(data, tokens, changelog_ts, callback):
@@ -156,10 +155,7 @@ def process_record(data, tokens, changelog_ts, callback):
         except ValueError:
             tokens[2] = "NULL"
 
-    if not changelog_ts:
-        ts1 = int(changelog_ts)
-    else:
-        ts1=""
+    ts1 = "" if changelog_ts else int(changelog_ts)
     record = Record(ts=ts1, fop_type=data[tokens[0]],
                     gfid=data[tokens[1]])
     if data[tokens[0]] == META:
@@ -212,9 +208,13 @@ def parse(filename, callback=default_callback):
                 in_record = True
                 continue
 
-            if c == SEP and ((prev_char != SEP and next_char == SEP) or
-                             (prev_char == SEP and next_char != SEP) or
-                             (prev_char != SEP and next_char != SEP)):
+            if c == SEP and (
+                prev_char != SEP
+                and next_char == SEP
+                or prev_char == SEP
+                and next_char != SEP
+                or prev_char != SEP
+            ):
                 tokens.append(slice(slice_start, i))
                 slice_start = i+1
 

@@ -51,10 +51,12 @@ class StoreAbsPath(Action):
 
 
 def get_pem_key_path(session, volume):
-    return os.path.join(conf.get_opt("session_dir"),
-                        session,
-                        volume,
-                        "%s_%s_secret.pem" % (session, volume))
+    return os.path.join(
+        conf.get_opt("session_dir"),
+        session,
+        volume,
+        f"{session}_{volume}_secret.pem",
+    )
 
 
 def node_cmd(host, host_uuid, task, cmd, args, opts):
@@ -74,18 +76,17 @@ def node_cmd(host, host_uuid, task, cmd, args, opts):
 
         if not localdir:
             # prefix with ssh command if not local node
-            cmd = ["ssh",
-                   "-oNumberOfPasswordPrompts=0",
-                   "-oStrictHostKeyChecking=no",
-                   # We force TTY allocation (-t -t) so that Ctrl+C is handed
-                   # through; see:
-                   #   https://bugzilla.redhat.com/show_bug.cgi?id=1382236
-                   # Note that this turns stderr of the remote `cmd`
-                   # into stdout locally.
-                   "-t",
-                   "-t",
-                   "-i", pem_key_path,
-                   "root@%s" % host] + cmd
+            cmd = [
+                "ssh",
+                "-oNumberOfPasswordPrompts=0",
+                "-oStrictHostKeyChecking=no",
+                "-t",
+                "-t",
+                "-i",
+                pem_key_path,
+                f"root@{host}",
+            ] + cmd
+
 
         (returncode, err, out) = execute(cmd, logger=logger)
         if returncode != 0:
@@ -100,14 +101,17 @@ def node_cmd(host, host_uuid, task, cmd, args, opts):
                  logger=logger)
 
         if opts.get("copy_outfile", False) and not localdir:
-            cmd_copy = ["scp",
-                        "-oNumberOfPasswordPrompts=0",
-                        "-oStrictHostKeyChecking=no",
-                        "-i", pem_key_path,
-                        "root@%s:/%s" % (host, opts.get("node_outfile")),
-                        os.path.dirname(opts.get("node_outfile"))]
-            execute(cmd_copy, exit_msg="%s - Copy command failed" % host,
-                    logger=logger)
+            cmd_copy = [
+                "scp",
+                "-oNumberOfPasswordPrompts=0",
+                "-oStrictHostKeyChecking=no",
+                "-i",
+                pem_key_path,
+                f'root@{host}:/{opts.get("node_outfile")}',
+                os.path.dirname(opts.get("node_outfile")),
+            ]
+
+            execute(cmd_copy, exit_msg=f"{host} - Copy command failed", logger=logger)
     except KeyboardInterrupt:
         sys.exit(2)
 
@@ -125,15 +129,18 @@ def run_cmd_nodes(task, args, **kwargs):
         # tmpfilename is valid only for tasks: pre, query and cleanup
         tmpfilename = kwargs.get("tmpfilename", "BADNAME")
 
-        node_outfile = os.path.join(conf.get_opt("working_dir"),
-                                    args.session, args.volume,
-                                    tmpfilename,
-                                    "tmp_output_%s" % num)
+        node_outfile = os.path.join(
+            conf.get_opt("working_dir"),
+            args.session,
+            args.volume,
+            tmpfilename,
+            f"tmp_output_{num}",
+        )
+
 
         if task == "pre":
             if vol_statusStr != "Started":
-                fail("Volume %s is not online" % args.volume,
-                     logger=logger)
+                fail(f"Volume {args.volume} is not online", logger=logger)
 
             # If Full backup is requested or start time is zero, use brickfind
             change_detector = conf.get_change_detector("changelog")
@@ -142,7 +149,7 @@ def run_cmd_nodes(task, args, **kwargs):
                 change_detector = conf.get_change_detector("brickfind")
                 tag = args.tag_for_full_find.strip()
                 if tag == "":
-                    tag = '""' if not is_host_local(host_uuid) else ""
+                    tag = "" if is_host_local(host_uuid) else '""'
 
             # remote file will be copied into this directory
             mkdirp(os.path.dirname(node_outfile),
@@ -152,22 +159,39 @@ def run_cmd_nodes(task, args, **kwargs):
             if not is_host_local(host_uuid):
                 FS = "'" + FS + "'"
 
-            cmd = [change_detector,
-                   args.session,
-                   args.volume,
-                   host,
-                   brick,
-                   node_outfile] + \
-                ([str(kwargs.get("start")), str(kwargs.get("end"))]
-                    if not args.full else []) + \
-                ([tag] if tag is not None else []) + \
-                ["--output-prefix", args.output_prefix] + \
-                (["--debug"] if args.debug else []) + \
-                (["--no-encode"] if args.no_encode else []) + \
-                (["--only-namespace-changes"] if args.only_namespace_changes
-                 else []) + \
-                (["--type", args.type]) + \
-                (["--field-separator", FS] if args.full else [])
+            cmd = (
+                (
+                    (
+                        [
+                            change_detector,
+                            args.session,
+                            args.volume,
+                            host,
+                            brick,
+                            node_outfile,
+                        ]
+                        + (
+                            []
+                            if args.full
+                            else [
+                                str(kwargs.get("start")),
+                                str(kwargs.get("end")),
+                            ]
+                        )
+                    )
+                    + ([tag] if tag is not None else [])
+                    + ["--output-prefix", args.output_prefix]
+                )
+                + (["--debug"] if args.debug else [])
+                + (["--no-encode"] if args.no_encode else [])
+                + (
+                    ["--only-namespace-changes"]
+                    if args.only_namespace_changes
+                    else []
+                )
+                + ["--type", args.type]
+            ) + (["--field-separator", FS] if args.full else [])
+
 
             opts["node_outfile"] = node_outfile
             opts["copy_outfile"] = True
@@ -179,7 +203,7 @@ def run_cmd_nodes(task, args, **kwargs):
                 change_detector = conf.get_change_detector("brickfind")
                 tag = args.tag_for_full_find.strip()
                 if tag == "":
-                    tag = '""' if not is_host_local(host_uuid) else ""
+                    tag = "" if is_host_local(host_uuid) else '""'
 
             # remote file will be copied into this directory
             mkdirp(os.path.dirname(node_outfile),
@@ -189,23 +213,42 @@ def run_cmd_nodes(task, args, **kwargs):
             if not is_host_local(host_uuid):
                 FS = "'" + FS + "'"
 
-            cmd = [change_detector,
-                   args.session,
-                   args.volume,
-                   host,
-                   brick,
-                   node_outfile] + \
-                ([str(kwargs.get("start")), str(kwargs.get("end"))]
-                    if not args.full else []) + \
-                ([tag] if tag is not None else []) + \
-                ["--only-query"] + \
-                ["--output-prefix", args.output_prefix] + \
-                (["--debug"] if args.debug else []) + \
-                (["--no-encode"] if args.no_encode else []) + \
-                (["--only-namespace-changes"]
-                    if args.only_namespace_changes else []) + \
-                (["--type", args.type]) + \
-                (["--field-separator", FS] if args.full else [])
+            cmd = (
+                (
+                    (
+                        (
+                            [
+                                change_detector,
+                                args.session,
+                                args.volume,
+                                host,
+                                brick,
+                                node_outfile,
+                            ]
+                            + (
+                                []
+                                if args.full
+                                else [
+                                    str(kwargs.get("start")),
+                                    str(kwargs.get("end")),
+                                ]
+                            )
+                        )
+                        + ([tag] if tag is not None else [])
+                        + ["--only-query"]
+                    )
+                    + ["--output-prefix", args.output_prefix]
+                )
+                + (["--debug"] if args.debug else [])
+                + (["--no-encode"] if args.no_encode else [])
+                + (
+                    ["--only-namespace-changes"]
+                    if args.only_namespace_changes
+                    else []
+                )
+                + ["--type", args.type]
+            ) + (["--field-separator", FS] if args.full else [])
+
 
             opts["node_outfile"] = node_outfile
             opts["copy_outfile"] = True
@@ -216,10 +259,7 @@ def run_cmd_nodes(task, args, **kwargs):
             try:
                 os.remove(node_outfile)
             except (OSError, IOError):
-                logger.warn("Failed to cleanup temporary file %s" %
-                            node_outfile)
-                pass
-
+                logger.warn(f"Failed to cleanup temporary file {node_outfile}")
             cmd = [conf.get_opt("nodeagent"),
                    "cleanup",
                    args.session,
@@ -228,8 +268,7 @@ def run_cmd_nodes(task, args, **kwargs):
                 (["--debug"] if args.debug else [])
         elif task == "create":
             if vol_statusStr != "Started":
-                fail("Volume %s is not online" % args.volume,
-                     logger=logger)
+                fail(f"Volume {args.volume} is not online", logger=logger)
 
             # When glusterfind create, create session directory in
             # each brick nodes
@@ -269,10 +308,10 @@ def run_cmd_nodes(task, args, **kwargs):
     for num, p in enumerate(pool):
         p.join()
         if p.exitcode != 0:
-            logger.warn("Command %s failed in %s" % (task, nodes[num][1]))
+            logger.warn(f"Command {task} failed in {nodes[num][1]}")
             if task in ["create", "delete"]:
-                fail("Command %s failed in %s" % (task, nodes[num][1]))
-            elif task == "pre" or task == "query":
+                fail(f"Command {task} failed in {nodes[num][1]}")
+            elif task in ["pre", "query"]:
                 if args.disable_partial:
                     sys.exit(1)
                 else:
@@ -307,17 +346,18 @@ def get_nodes(volume):
     try:
         brick_elems = []
         if vol_typeStr == "Tier":
-            brick_elems.append('bricks/hotBricks/brick')
-            brick_elems.append('bricks/coldBricks/brick')
+            brick_elems.extend(('bricks/hotBricks/brick', 'bricks/coldBricks/brick'))
         else:
             brick_elems.append('bricks/brick')
 
         for elem in brick_elems:
-            for b in volume_el.findall(elem):
-                nodes.append((b.find('hostUuid').text,
-                              b.find('name').text))
+            nodes.extend(
+                (b.find('hostUuid').text, b.find('name').text)
+                for b in volume_el.findall(elem)
+            )
+
     except (ParseError, AttributeError, ValueError) as e:
-        fail("Failed to parse Volume Info: %s" % e, logger=logger)
+        fail(f"Failed to parse Volume Info: {e}", logger=logger)
 
     return nodes
 
@@ -435,42 +475,56 @@ def ssh_setup(args):
                "",
                "-f",
                pem_key_path]
-        execute(cmd,
-                exit_msg="Unable to generate ssh key %s"
-                % pem_key_path,
-                logger=logger)
+        execute(
+            cmd,
+            exit_msg=f"Unable to generate ssh key {pem_key_path}",
+            logger=logger,
+        )
 
-        logger.info("Ssh key generated %s" % pem_key_path)
+
+        logger.info(f"Ssh key generated {pem_key_path}")
 
     try:
-        shutil.copyfile(pem_key_path + ".pub",
-                        os.path.join(conf.get_opt("session_dir"),
-                                     ".keys",
-                                     "%s_%s_secret.pem.pub" % (args.session,
-                                                               args.volume)))
+        shutil.copyfile(
+            f"{pem_key_path}.pub",
+            os.path.join(
+                conf.get_opt("session_dir"),
+                ".keys",
+                f"{args.session}_{args.volume}_secret.pem.pub",
+            ),
+        )
+
     except (IOError, OSError) as e:
-        fail("Failed to copy public key to %s: %s"
-             % (os.path.join(conf.get_opt("session_dir"), ".keys"), e),
-             logger=logger)
+        fail(
+            f'Failed to copy public key to {os.path.join(conf.get_opt("session_dir"), ".keys")}: {e}',
+            logger=logger,
+        )
+
 
     # Copy pub file to all nodes
-    cmd = ["gluster",
-           "system::",
-           "copy",
-           "file",
-           "/glusterfind/.keys/%s.pub" % os.path.basename(pem_key_path)]
+    cmd = [
+        "gluster",
+        "system::",
+        "copy",
+        "file",
+        f"/glusterfind/.keys/{os.path.basename(pem_key_path)}.pub",
+    ]
+
 
     execute(cmd, exit_msg="Failed to distribute ssh keys", logger=logger)
 
     logger.info("Distributed ssh key to all nodes of Volume")
 
     # Add to authorized_keys file in each node
-    cmd = ["gluster",
-           "system::",
-           "execute",
-           "add_secret_pub",
-           "root",
-           "/glusterfind/.keys/%s.pub" % os.path.basename(pem_key_path)]
+    cmd = [
+        "gluster",
+        "system::",
+        "execute",
+        "add_secret_pub",
+        "root",
+        f"/glusterfind/.keys/{os.path.basename(pem_key_path)}.pub",
+    ]
+
     execute(cmd,
             exit_msg="Failed to add ssh keys to authorized_keys file",
             logger=logger)
@@ -483,21 +537,19 @@ def enable_volume_options(args):
              args.volume, "build-pgfid", "on"],
             exit_msg="Failed to set volume option build-pgfid on",
             logger=logger)
-    logger.info("Volume option set %s, build-pgfid on" % args.volume)
+    logger.info(f"Volume option set {args.volume}, build-pgfid on")
 
     execute(["gluster", "volume", "set",
              args.volume, "changelog.changelog", "on"],
             exit_msg="Failed to set volume option "
             "changelog.changelog on", logger=logger)
-    logger.info("Volume option set %s, changelog.changelog on"
-                % args.volume)
+    logger.info(f"Volume option set {args.volume}, changelog.changelog on")
 
     execute(["gluster", "volume", "set",
              args.volume, "changelog.capture-del-path", "on"],
             exit_msg="Failed to set volume option "
             "changelog.capture-del-path on", logger=logger)
-    logger.info("Volume option set %s, changelog.capture-del-path on"
-                % args.volume)
+    logger.info(f"Volume option set {args.volume}, changelog.capture-del-path on")
 
 
 def write_output(outfile, outfilemerger, field_separator):
@@ -530,9 +582,9 @@ def validate_volume(volume):
         tree = etree.fromstring(data)
         statusStr = tree.find('volInfo/volumes/volume/statusStr').text
     except (ParseError, AttributeError) as e:
-        fail("Invalid Volume: Check the Volume name! %s" % e)
+        fail(f"Invalid Volume: Check the Volume name! {e}")
     if statusStr != "Started":
-        fail("Volume %s is not online" % volume)
+        fail(f"Volume {volume} is not online")
 
 # The rules for a valid session name.
 SESSION_NAME_RULES = {
@@ -564,15 +616,17 @@ def validate_session_name(session):
 def mode_create(session_dir, args):
     validate_session_name(args.session)
 
-    logger.debug("Init is called - Session: %s, Volume: %s"
-                 % (args.session, args.volume))
+    logger.debug(
+        f"Init is called - Session: {args.session}, Volume: {args.volume}"
+    )
+
     mkdirp(session_dir, exit_on_err=True, logger=logger)
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
            logger=logger)
     status_file = os.path.join(session_dir, args.volume, "status")
 
     if os.path.exists(status_file) and not args.force:
-        fail("Session %s already created" % args.session, logger=logger)
+        fail(f"Session {args.session} already created", logger=logger)
 
     if not os.path.exists(status_file) or args.force:
         ssh_setup(args)
@@ -608,10 +662,10 @@ def mode_query(session_dir, args):
         tree = etree.fromstring(data)
         statusStr = tree.find('volInfo/volumes/volume/statusStr').text
     except (ParseError, AttributeError) as e:
-        fail("Invalid Volume: %s" % e, logger=logger)
+        fail(f"Invalid Volume: {e}", logger=logger)
 
     if statusStr != "Started":
-        fail("Volume %s is not online" % args.volume, logger=logger)
+        fail(f"Volume {args.volume} is not online", logger=logger)
 
     mkdirp(session_dir, exit_on_err=True, logger=logger)
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
@@ -673,12 +727,14 @@ def mode_query(session_dir, args):
     else:
         # Read each Changelogs db and generate finaldb
         create_file(args.outfile, exit_on_err=True, logger=logger)
-        outfilemerger = OutputMerger(args.outfile + ".db",
-                                     list(g_pid_nodefile_map.values()))
+        outfilemerger = OutputMerger(
+            f"{args.outfile}.db", list(g_pid_nodefile_map.values())
+        )
+
         write_output(args.outfile, outfilemerger, args.field_separator)
 
     try:
-        os.remove(args.outfile + ".db")
+        os.remove(f"{args.outfile}.db")
     except (IOError, OSError):
         pass
 
@@ -697,7 +753,7 @@ def mode_pre(session_dir, args):
     endtime_to_update = int(time.time()) - get_changelog_rollover_time(
         args.volume)
     status_file = os.path.join(session_dir, args.volume, "status")
-    status_file_pre = status_file + ".pre"
+    status_file_pre = f"{status_file}.pre"
 
     mkdirp(os.path.dirname(args.outfile), exit_on_err=True, logger=logger)
 
@@ -716,8 +772,7 @@ def mode_pre(session_dir, args):
     except ValueError:
         pass
     except (OSError, IOError) as e:
-        fail("Error Opening Session file %s: %s"
-             % (status_file, e), logger=logger)
+        fail(f"Error Opening Session file {status_file}: {e}", logger=logger)
 
     logger.debug("Pre is called - Session: %s, Volume: %s, "
                  "Start time: %s, End time: %s"
@@ -742,12 +797,14 @@ def mode_pre(session_dir, args):
     else:
         # Read each Changelogs db and generate finaldb
         create_file(args.outfile, exit_on_err=True, logger=logger)
-        outfilemerger = OutputMerger(args.outfile + ".db",
-                                     list(g_pid_nodefile_map.values()))
+        outfilemerger = OutputMerger(
+            f"{args.outfile}.db", list(g_pid_nodefile_map.values())
+        )
+
         write_output(args.outfile, outfilemerger, args.field_separator)
 
     try:
-        os.remove(args.outfile + ".db")
+        os.remove(f"{args.outfile}.db")
     except (IOError, OSError):
         pass
 
@@ -765,9 +822,11 @@ def mode_post(session_dir, args):
     If pre session file does not exists, return ERROR
     """
     status_file = os.path.join(session_dir, args.volume, "status")
-    logger.debug("Post is called - Session: %s, Volume: %s"
-                 % (args.session, args.volume))
-    status_file_pre = status_file + ".pre"
+    logger.debug(
+        f"Post is called - Session: {args.session}, Volume: {args.volume}"
+    )
+
+    status_file_pre = f"{status_file}.pre"
 
     if os.path.exists(status_file_pre):
         run_cmd_nodes("post", args)
@@ -792,8 +851,8 @@ def mode_delete(session_dir, args):
     try:
         os.rmdir(session_dir)
     except OSError as e:
-        if not e.errno == ENOTEMPTY:
-            logger.warn("Failed to delete session directory: %s" % e)
+        if e.errno != ENOTEMPTY:
+            logger.warn(f"Failed to delete session directory: {e}")
 
 
 def mode_list(session_dir, args):
@@ -806,11 +865,7 @@ def mode_list(session_dir, args):
             fail("Invalid Session", logger=logger)
         sessions = [args.session]
     else:
-        sessions = []
-        for d in os.listdir(session_dir):
-            if d != ".keys":
-                sessions.append(d)
-
+        sessions = [d for d in os.listdir(session_dir) if d != ".keys"]
     output = []
     for session in sessions:
         # Session Volume Last Processed
@@ -877,7 +932,7 @@ def main():
 
         if not os.path.exists(session_dir) and \
                 args.mode not in ["create", "list", "query"]:
-            fail("Invalid session %s" % args.session)
+            fail(f"Invalid session {args.session}")
 
         # volume involved, validate the volume first
         if args.mode not in ["list"]:
@@ -887,13 +942,12 @@ def main():
         # "default" is a system defined session name
         if args.mode in ["create", "post", "pre", "delete"] and \
                 args.session == "default":
-            fail("Invalid session %s" % args.session)
+            fail(f"Invalid session {args.session}")
 
         vol_dir = os.path.join(session_dir, args.volume)
         if not os.path.exists(vol_dir) and args.mode not in \
                 ["create", "list", "query"]:
-            fail("Session %s not created with volume %s" %
-                 (args.session, args.volume))
+            fail(f"Session {args.session} not created with volume {args.volume}")
 
         mkdirp(os.path.join(conf.get_opt("log_dir"),
                             args.session,
@@ -907,15 +961,16 @@ def main():
 
         # globals() will have all the functions already defined.
         # mode_<args.mode> will be the function name to be called
-        globals()["mode_" + args.mode](session_dir, args)
+        globals()[f"mode_{args.mode}"](session_dir, args)
     except KeyboardInterrupt:
-        if args is not None:
-            if args.mode == "pre" or args.mode == "query":
-                # cleanup session
-                if gtmpfilename is not None:
-                    # no more interrupts until we clean up
-                    signal.signal(signal.SIGINT, signal.SIG_IGN)
-                    run_cmd_nodes("cleanup", args, tmpfilename=gtmpfilename)
+        if (
+            args is not None
+            and args.mode in ["pre", "query"]
+            and gtmpfilename is not None
+        ):
+            # no more interrupts until we clean up
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            run_cmd_nodes("cleanup", args, tmpfilename=gtmpfilename)
 
         # Interrupted, exit with non zero error code
         sys.exit(2)

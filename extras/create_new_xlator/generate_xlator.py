@@ -6,7 +6,7 @@ import re
 import sys
 import string
 import time
-path = os.path.abspath(os.path.dirname(__file__)) + '/../../libglusterfs/src'
+path = f'{os.path.abspath(os.path.dirname(__file__))}/../../libglusterfs/src'
 sys.path.append(path)
 from generator import ops, xlator_cbks, xlator_dumpops
 
@@ -29,9 +29,7 @@ fn_subs = {}
 
 
 def get_error_arg(type_str):
-        if type_str.find(" *") != -1:
-                return "NULL"
-        return "-1"
+        return "NULL" if type_str.find(" *") != -1 else "-1"
 
 
 def get_param(names, types):
@@ -53,12 +51,11 @@ def generate(tmpl, name, table):
         ret_type = [a[1] for a in table[name] if a[0] == 'ret-val']
         ret_var = [a[2] for a in table[name] if a[0] == 'ret-val']
 
-        sdict = {}
-        #Parameters are (t1, var1), (t2, var2)...
-        #Args are (var1, var2,...)
-        sdict["@WIND_ARGS@"] = ', '.join(w_arg_names)
-        sdict["@UNWIND_ARGS@"] = ', '.join(u_arg_names)
-        sdict["@ERROR_ARGS@"] = ', '.join(list(map(get_error_arg, u_arg_types)))
+        sdict = {
+            "@WIND_ARGS@": ', '.join(w_arg_names),
+            "@UNWIND_ARGS@": ', '.join(u_arg_names),
+            "@ERROR_ARGS@": ', '.join(list(map(get_error_arg, u_arg_types))),
+        }
         sdict["@WIND_PARAMS@"] = get_param(w_arg_names, w_arg_types)
         sdict["@UNWIND_PARAMS@"] = get_param(u_arg_names, u_arg_types)
         sdict["@FUNC_PARAMS@"] = get_param(fn_arg_names, fn_arg_types)
@@ -74,108 +71,96 @@ def generate(tmpl, name, table):
 
 
 def gen_xlator():
-        xl = open(src_dir_path+"/"+xl_name+".c", 'w+')
+        with open(f"{src_dir_path}/{xl_name}.c", 'w+') as xl:
+                print(COPYRIGHT, file=xl)
+                print(fragments["INCLUDE_IN_SRC_FILE"].replace("@XL_NAME@",
+                                                                      xl_name), file=xl)
 
-        print(COPYRIGHT, file=xl)
-        print(fragments["INCLUDE_IN_SRC_FILE"].replace("@XL_NAME@",
-                                                              xl_name), file=xl)
+                #Generate cbks and fops
+                for fop in ops:
+                        print(generate(fragments["CBK_TEMPLATE"], fop, ops), file=xl)
+                        print(generate(fragments["FOP_TEMPLATE"], fop, ops), file=xl)
 
-        #Generate cbks and fops
-        for fop in ops:
-                print(generate(fragments["CBK_TEMPLATE"], fop, ops), file=xl)
-                print(generate(fragments["FOP_TEMPLATE"], fop, ops), file=xl)
+                for cbk in xlator_cbks:
+                        print(generate(fragments["FUNC_TEMPLATE"], cbk,
+                                              xlator_cbks), file=xl)
 
-        for cbk in xlator_cbks:
-                print(generate(fragments["FUNC_TEMPLATE"], cbk,
-                                      xlator_cbks), file=xl)
+                for dops in xlator_dumpops:
+                        print(generate(fragments["FUNC_TEMPLATE"], dops,
+                                              xlator_dumpops), file=xl)
 
-        for dops in xlator_dumpops:
-                print(generate(fragments["FUNC_TEMPLATE"], dops,
-                                      xlator_dumpops), file=xl)
+                #Generate fop table
+                print("struct xlator_fops fops = {", file=xl)
+                for fop in ops:
+                        print("        .{0:20} = {1}_{2},".format(fop, fop_prefix, fop), file=xl)
+                print("};", file=xl)
 
-        #Generate fop table
-        print("struct xlator_fops fops = {", file=xl)
-        for fop in ops:
-                print("        .{0:20} = {1}_{2},".format(fop, fop_prefix, fop), file=xl)
-        print("};", file=xl)
+                #Generate xlator_cbks table
+                print("struct xlator_cbks cbks = {", file=xl)
+                for cbk in xlator_cbks:
+                        print("        .{0:20} = {1}_{2},".format(cbk, fop_prefix, cbk), file=xl)
+                print("};", file=xl)
 
-        #Generate xlator_cbks table
-        print("struct xlator_cbks cbks = {", file=xl)
-        for cbk in xlator_cbks:
-                print("        .{0:20} = {1}_{2},".format(cbk, fop_prefix, cbk), file=xl)
-        print("};", file=xl)
+                #Generate xlator_dumpops table
+                print("struct xlator_dumpops dumpops = {", file=xl)
+                for dops in xlator_dumpops:
+                        print("        .{0:20} = {1}_{2},".format(dops, fop_prefix, dops), file=xl)
+                print("};", file=xl)
 
-        #Generate xlator_dumpops table
-        print("struct xlator_dumpops dumpops = {", file=xl)
-        for dops in xlator_dumpops:
-                print("        .{0:20} = {1}_{2},".format(dops, fop_prefix, dops), file=xl)
-        print("};", file=xl)
-
-        xlator_methods = fragments["XLATOR_METHODS"].replace("@XL_NAME@", xl_name)
-        xlator_methods = xlator_methods.replace("@FOP_PREFIX@", fop_prefix)
-        print(xlator_methods, file=xl)
-
-        xl.close()
+                xlator_methods = fragments["XLATOR_METHODS"].replace("@XL_NAME@", xl_name)
+                xlator_methods = xlator_methods.replace("@FOP_PREFIX@", fop_prefix)
+                print(xlator_methods, file=xl)
 
 
 def create_dir_struct():
-        if not os.path.exists(dir_path+"/src"):
-                os.makedirs(dir_path+"/src")
+        if not os.path.exists(f"{dir_path}/src"):
+                os.makedirs(f"{dir_path}/src")
 
 
 def gen_header_files():
         upname = xl_name_no_hyphen.upper()
-        h = open(src_dir_path+"/"+xl_name+".h", 'w+')
-        print(COPYRIGHT, file=h)
-        txt = fragments["HEADER_FMT"].replace("@HFL_NAME@", upname)
-        txt = txt.replace("@XL_NAME@", xl_name)
-        print(txt, file=h)
-        h.close()
-
-        h = open(src_dir_path+"/"+xl_name+"-mem-types.h", 'w+')
-        print(COPYRIGHT, file=h)
-        txt = fragments["MEM_HEADER_FMT"].replace("@HFL_NAME@", upname+"_MEM_TYPES")
-        txt = txt.replace("@FOP_PREFIX@", fop_prefix)
-        print(txt, file=h)
-        h.close()
-
-        h = open(src_dir_path+"/"+xl_name+"-messages.h", 'w+')
-        print(COPYRIGHT, file=h)
-        txt = fragments["MSG_HEADER_FMT"].replace("@HFL_NAME@", upname+"_MESSAGES")
-        txt = txt.replace("@FOP_PREFIX@", fop_prefix.upper())
-        print(txt, file=h)
-        h.close()
+        with open(f"{src_dir_path}/{xl_name}.h", 'w+') as h:
+                print(COPYRIGHT, file=h)
+                txt = fragments["HEADER_FMT"].replace("@HFL_NAME@", upname)
+                txt = txt.replace("@XL_NAME@", xl_name)
+                print(txt, file=h)
+        with open(f"{src_dir_path}/{xl_name}-mem-types.h", 'w+') as h:
+                print(COPYRIGHT, file=h)
+                txt = fragments["MEM_HEADER_FMT"].replace("@HFL_NAME@", f"{upname}_MEM_TYPES")
+                txt = txt.replace("@FOP_PREFIX@", fop_prefix)
+                print(txt, file=h)
+        with open(f"{src_dir_path}/{xl_name}-messages.h", 'w+') as h:
+                print(COPYRIGHT, file=h)
+                txt = fragments["MSG_HEADER_FMT"].replace("@HFL_NAME@", f"{upname}_MESSAGES")
+                txt = txt.replace("@FOP_PREFIX@", fop_prefix.upper())
+                print(txt, file=h)
 
 
 def gen_makefiles():
-        m = open(dir_path+"/Makefile.am", 'w+')
-        print("SUBDIRS = src\n\nCLEANFILES =", file=m)
-        m.close()
-
-        m = open(src_dir_path+"/Makefile.am", 'w+')
-        txt = MAKEFILE_FMT.replace("@XL_NAME@", xl_name)
-        txt = txt.replace("@XL_NAME_NO_HYPHEN@", xl_name_no_hyphen)
-        txt = txt.replace("@XL_TYPE@", xlator_type)
-        print(txt, file=m)
-        m.close()
+        with open(f"{dir_path}/Makefile.am", 'w+') as m:
+                print("SUBDIRS = src\n\nCLEANFILES =", file=m)
+        with open(f"{src_dir_path}/Makefile.am", 'w+') as m:
+                txt = MAKEFILE_FMT.replace("@XL_NAME@", xl_name)
+                txt = txt.replace("@XL_NAME_NO_HYPHEN@", xl_name_no_hyphen)
+                txt = txt.replace("@XL_TYPE@", xlator_type)
+                print(txt, file=m)
 
 def get_copyright ():
         return fragments["CP"].replace("@CURRENT_YEAR@",
                                        time.strftime("%Y"))
 
-def load_fragments ():
+def load_fragments():
         pragma_re = re.compile('pragma fragment (.*)')
         cur_symbol = None
         cur_value = ""
         result = {}
         basepath = os.path.abspath(os.path.dirname(__file__))
-        fragpath = basepath + "/new-xlator.c.tmpl"
-        for line in open(fragpath, "r").readlines():
-                m = pragma_re.search(line)
-                if m:
+        fragpath = f"{basepath}/new-xlator.c.tmpl"
+        for line in open(fragpath, "r"):
+                if m := pragma_re.search(line):
                         if cur_symbol:
                                 result[cur_symbol] = cur_value
-                        cur_symbol = m.group(1)
+                        cur_symbol = m[1]
                         cur_value = ""
                 else:
                         cur_value += line
@@ -194,10 +179,10 @@ if __name__ == '__main__':
         if sys.argv[1].endswith('/'):
                 dir_path = sys.argv[1] + xl_name
         else:
-                dir_path = sys.argv[1] + "/" + xl_name
+                dir_path = f"{sys.argv[1]}/{xl_name}"
         xlator_type = os.path.basename(sys.argv[1])
         fop_prefix = sys.argv[3]
-        src_dir_path = dir_path + "/src"
+        src_dir_path = f"{dir_path}/src"
 
         fragments = load_fragments()
 

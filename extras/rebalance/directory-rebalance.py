@@ -71,7 +71,7 @@ class Rebalancer:
     #make space
     def get_file_name(self, suffix):
         name_suffix = hashlib.md5(self.path.encode('utf-8')).hexdigest()[:8]+'.'+suffix
-        name_suffix = '-' + name_suffix
+        name_suffix = f'-{name_suffix}'
         max_name_len = os.pathconf('.', 'PC_NAME_MAX')
         name = 'rebalance'+self.path.replace('/', '-')
         if len(name) > max_name_len - len(name_suffix):
@@ -169,7 +169,7 @@ class Rebalancer:
                     try:
                         path = os.path.join(d, f)
                         size = os.stat(path).st_size
-                        file_index.write(path+'-'+str(size)+'\n')
+                        file_index.write(f'{path}-{str(size)}' + '\n')
                         self.expected_total_size += size
                         self.expected_total_files += 1
                         crawl_progress(self.expected_total_files, size_fmt(self.expected_total_size))

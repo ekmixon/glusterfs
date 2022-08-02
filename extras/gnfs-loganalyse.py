@@ -17,14 +17,24 @@ import sys
 
 
 class NFSRequest:
-        def requestIsEntryOp (self):
+        def requestIsEntryOp(self):
                 op = self.op
-                if op == "CREATE" or op == "LOOKUP" or op == "REMOVE" or op == "LINK" or op == "RENAME" or op == "MKDIR" or op == "RMDIR" or op == "SYMLINK" or op == "MKNOD":
+                if op in [
+                    "CREATE",
+                    "LOOKUP",
+                    "REMOVE",
+                    "LINK",
+                    "RENAME",
+                    "MKDIR",
+                    "RMDIR",
+                    "SYMLINK",
+                    "MKNOD",
+                ]:
                         return 1
                 else:
                         return 0
 
-        def __init__ (self, logline, linecount):
+        def __init__(self, logline, linecount):
                 self.calllinecount = 0
                 self.xid = ""
                 self.op = ""
@@ -37,7 +47,7 @@ class NFSRequest:
                 self.replygfid = ""
 
                 tokens = logline.strip ().split (" ")
-                self.timestamp = tokens[0] + " " + tokens[1]
+                self.timestamp = f"{tokens[0]} {tokens[1]}"
                 if "XID:" not in tokens:
                         return None
 
@@ -62,18 +72,20 @@ class NFSRequest:
         def getXID (self):
                 return self.xid
 
-        def setReply (self, logline, linecount):
+        def setReply(self, logline, linecount):
                 tokens = logline.strip ().split (" ")
-                timestamp = tokens[0] + " " + tokens[1]
+                timestamp = f"{tokens[0]} {tokens[1]}"
                 statidx = tokens.index ("NFS:")
-                self.replydata = " TimeStamp: " + timestamp + " " + " ".join (tokens [statidx+1:])
+                self.replydata = f" TimeStamp: {timestamp} " + " ".join (tokens [statidx+1:])
                 self.replylinecount = linecount
                 if "gfid" in tokens:
                         gfididx = tokens.index ("gfid")
                         self.replygfid = tokens [gfididx + 1].strip(",")
 
-        def dump (self):
-                print("ReqLine: " + str(self.calllinecount) + " TimeStamp: " + self.timestamp + ", XID: " + self.xid + " " + self.op + " ARGS: " + self.opdata + " RepLine: " + str(self.replylinecount) + " " + self.replydata)
+        def dump(self):
+                print(
+                    f"ReqLine: {str(self.calllinecount)} TimeStamp: {self.timestamp}, XID: {self.xid} {self.op} ARGS: {self.opdata} RepLine: {str(self.replylinecount)} {self.replydata}"
+                )
 
 class NFSLogAnalyzer:
 
@@ -89,7 +101,7 @@ class NFSLogAnalyzer:
                 self.tracknamefh = tracknamefh
                 self.trackedfilehandles = []
 
-        def handle_call_line (self, logline, linecount):
+        def handle_call_line(self, logline, linecount):
                 newreq = NFSRequest (logline, linecount)
                 xid = newreq.getXID ()
                 if (self.optn == SYNTHESIZE):
@@ -103,12 +115,10 @@ class NFSLogAnalyzer:
                                 else:
                                         del newreq
                         elif self.tracknamefh == ENABLE_TRACKNAME_FH:
-                                if len (self.trackedfilehandles) > 0:
-                                        if newreq.gfid in self.trackedfilehandles:
-                                                self.xid_request_map [xid] = newreq
-                                                self.rqlist.append(newreq)
-                                        else:
-                                                del newreq
+                                if (len(self.trackedfilehandles) > 0
+                                    and newreq.gfid in self.trackedfilehandles):
+                                        self.xid_request_map [xid] = newreq
+                                        self.rqlist.append(newreq)
                                 else:
                                         del newreq
                         else:
@@ -145,12 +155,12 @@ class NFSLogAnalyzer:
                 elif msgtype == self.REPLY:
                         self.handle_reply_line (logline, linecount)
 
-        def getStats (self):
+        def getStats(self):
                 if self.stats == 0:
                         return
                 rcount = len (self.xid_request_map.keys ())
                 orphancount = len (self.orphan_replies.keys ())
-                print("Requests: " + str(rcount) + ", Orphans: " + str(orphancount))
+                print(f"Requests: {rcount}, Orphans: {orphancount}")
 
         def dump (self):
                 self.getStats ()
@@ -177,7 +187,6 @@ DISABLE_TRACKNAME_FH = 0
 progmsgcount = 1000
 dumpinterval = 200000
 operation = SYNTHESIZE
-stats = ENABLESTATS
 tracknamefh = DISABLE_TRACKNAME_FH
 trackfilename = ""
 
@@ -232,9 +241,7 @@ At every dump interval, some stats are printed about the dumped lines.
 Use this option to disable printing that to avoid cluttering the
 output.
 """
-if "--nostats" in sys.argv:
-        stats = DISABLESTATS
-
+stats = DISABLESTATS if "--nostats" in sys.argv else ENABLESTATS
 """
 While tracking a file using --trackfilename, we're only given those
 operations which contain the filename. This excludes a large number
@@ -257,5 +264,5 @@ for line in sys.stdin:
                 la.dump ()
 
         if linecount % progmsgcount == 0:
-                sys.stderr.write ("Integrating line: "+ str(linecount) + "\n")
+                sys.stderr.write(f"Integrating line: {str(linecount)}" + "\n")
         la.analyzeLine (line, linecount)

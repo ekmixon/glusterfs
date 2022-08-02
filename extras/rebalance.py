@@ -29,18 +29,15 @@ class Brick:
                 self.r_start = rs
                 self.r_end = re
                 self.curr_size = self.r_end - self.r_start + 1
-        def __repr__ (self):
+        def __repr__(self):
                 value = self.path[:]
                 value += "(%d," % self.size
-                if self.curr_size:
-                        value += "0x%x,0x%x)" % (self.r_start, self.r_end)
-                else:
-                        value += "-)"
+                value += "0x%x,0x%x)" % (self.r_start, self.r_end) if self.curr_size else "-)"
                 return value
 
-def get_bricks (host, vol):
+def get_bricks(host, vol):
         t = pipes.Template()
-        t.prepend("gluster --remote-host=%s system getspec %s"%(host, vol), ".-")
+        t.prepend(f"gluster --remote-host={host} system getspec {vol}", ".-")
         return t.open(None, "r")
 
 def generate_stanza (vf, all_xlators, cur_subvol):
@@ -57,15 +54,13 @@ def generate_stanza (vf, all_xlators, cur_subvol):
         vf.write("end-volume\n\n")
 
 
-def mount_brick (localpath, all_xlators, dht_subvol):
+def mount_brick(localpath, all_xlators, dht_subvol):
 
         # Generate a volfile.
-        vf_name = localpath + ".vol"
-        vf = open(vf_name, "w")
-        generate_stanza(vf, all_xlators, dht_subvol)
-        vf.flush()
-        vf.close()
-
+        vf_name = f"{localpath}.vol"
+        with open(vf_name, "w") as vf:
+                generate_stanza(vf, all_xlators, dht_subvol)
+                vf.flush()
         # Create a brick directory and mount the brick there.
         os.mkdir(localpath)
         subprocess.call(["glusterfs", "-f", vf_name, localpath])
@@ -79,7 +74,7 @@ def mount_brick (localpath, all_xlators, dht_subvol):
 # We might have to revisit this if we get as far as actually issuing millions
 # of setxattr requests.  Even then, it might be better to do that part with a C
 # program which has only a build-time dependency.
-def get_range (brick):
+def get_range(brick):
         t = pipes.Template()
         cmd = "getfattr -e hex -n trusted.glusterfs.dht %s 2> /dev/null"
         t.prepend(cmd%brick, ".-")
@@ -88,10 +83,10 @@ def get_range (brick):
         try:
                 value = f.readline().rstrip().split('=')[1][2:]
         except:
-                print("could not get layout for %s (might be OK)" % brick)
+                print(f"could not get layout for {brick} (might be OK)")
                 return None
-        v_start = int("0x"+value[16:24], 16)
-        v_end = int("0x"+value[24:32], 16)
+        v_start = int(f"0x{value[16:24]}", 16)
+        v_end = int(f"0x{value[24:32]}", 16)
         return (v_start, v_end)
 
 def calc_sizes (bricks, total):
@@ -114,12 +109,12 @@ def calc_sizes (bricks, total):
 
 # Normalization means sorting the bricks by r_start and (b) ensuring that there
 # are no gaps.
-def normalize (in_bricks):
+def normalize(in_bricks):
         out_bricks = []
         curr_hash = 0
         used = 0
+        curr_best = None
         while curr_hash < (1<<32):
-                curr_best = None
                 for b in in_bricks:
                         if b.r_start == curr_hash:
                                 used += 1
@@ -132,7 +127,7 @@ def normalize (in_bricks):
                         sys.exit(1)
         return out_bricks + in_bricks, used
 
-def get_score (bricks):
+def get_score(bricks):
         score = 0
         curr_hash = 0
         for b in bricks:
@@ -142,14 +137,8 @@ def get_score (bricks):
                 new_start = curr_hash
                 curr_hash += b.good_size
                 new_end = curr_hash - 1
-                if new_start > b.r_start:
-                        max_start = new_start
-                else:
-                        max_start = b.r_start
-                if new_end < b.r_end:
-                        min_end = new_end
-                else:
-                        min_end = b.r_end
+                max_start = new_start if new_start > b.r_start else b.r_start
+                min_end = new_end if new_end < b.r_end else b.r_end
                 if max_start <= min_end:
                         score += (min_end - max_start + 1)
         return score
@@ -182,10 +171,10 @@ if __name__ == "__main__":
         orig_dir = os.getcwd()
         work_dir = tempfile.mkdtemp()
         bricks = []
-        def cleanup_workdir ():
+        def cleanup_workdir():
                 os.chdir(orig_dir)
                 if options.verbose:
-                        print("Cleaning up %s" % work_dir)
+                        print(f"Cleaning up {work_dir}")
                 for b in bricks:
                         subprocess.call(["umount", b.path])
                 shutil.rmtree(work_dir)

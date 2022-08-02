@@ -13,7 +13,7 @@ import socket
 ret = 1
 
 if len(sys.argv) != 2:
-        print('Usage: %s <socket>' % (sys.argv[0]))
+        print(f'Usage: {sys.argv[0]} <socket>')
         sys.exit(ret)
 
 path = sys.argv[1]

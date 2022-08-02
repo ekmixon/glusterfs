@@ -9,11 +9,7 @@ except ImportError:
     sys.exit(1)
 
 def pmap_find(p, name):
-    for m in p.memory_maps(grouped=True):
-        if m.path.endswith("%s.so" % name):
-            return True
-        continue
-    return False
+    return any(m.path.endswith(f"{name}.so") for m in p.memory_maps(grouped=True))
 
 def pidof(processname):
     for p in psutil.process_iter():

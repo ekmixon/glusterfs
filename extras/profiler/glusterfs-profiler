@@ -222,9 +222,7 @@ class Texttable:
             out += self._draw_line(self._header, isheader=True)
             if self._has_header():
                 out += self._hline_header()
-        length = 0
-        for row in self._rows:
-            length += 1
+        for length, row in enumerate(self._rows, start=1):
             out += self._draw_line(row)
             if self._has_hlines() and length < len(self._rows):
                 out += self._hline()
@@ -288,8 +286,7 @@ class Texttable:
         if (is_header):
             horiz = self._char_header
         # compute cell separator
-        s = "%s%s%s" % (horiz, [horiz, self._char_corner][self._has_vlines()],
-            horiz)
+        s = f"{horiz}{[horiz, self._char_corner][self._has_vlines()]}{horiz}"
         # build the line
         l = s.join([horiz*n for n in self._width])
         # add border if needed
@@ -341,8 +338,7 @@ class Texttable:
         items = len(maxi)
         length = reduce(lambda x,y: x+y, maxi)
         if self._max_width and length + items*3 + 1 > self._max_width:
-            maxi = [(self._max_width - items*3 -1) / items \
-                for n in range(items)]
+            maxi = [(self._max_width - items*3 -1) / items for _ in range(items)]
         self._width = maxi
 
     def _check_align(self):
@@ -365,23 +361,21 @@ class Texttable:
         out  = ""
         for i in range(len(line[0])):
             if self._has_border():
-                out += "%s " % self._char_vert
-            length = 0
-            for cell, width, align in zip(line, self._width, self._align):
-                length += 1
+                out += f"{self._char_vert} "
+            for length, (cell, width, align) in enumerate(zip(line, self._width, self._align), start=1):
                 cell_line = cell[i]
                 fill = width - len(cell_line)
                 if isheader:
                     align = "c"
-                if align == "r":
-                    out += "%s " % (fill * space + cell_line)
-                elif align == "c":
+                if align == "c":
                     out += "%s " % (fill/2 * space + cell_line \
-                            + (fill/2 + fill%2) * space)
+                                + (fill/2 + fill%2) * space)
+                elif align == "r":
+                    out += f"{fill * space + cell_line} "
                 else:
-                    out += "%s " % (cell_line + fill * space)
+                    out += f"{cell_line + fill * space} "
                 if length < len(line):
-                    out += "%s " % [space, self._char_vert][self._has_vlines()]
+                    out += f"{[space, self._char_vert][self._has_vlines()]} "
             out += "%s\n" % ['', self._char_vert][self._has_border()]
         return out
 
@@ -402,12 +396,12 @@ class Texttable:
         for cell, valign in zip(line_wrapped, self._valign):
             if isheader:
                 valign = "t"
-            if valign == "m":
+            if valign == "b":
+                cell[:0] = [""] * (max_cell_lines - len(cell))
+            elif valign == "m":
                 missing = max_cell_lines - len(cell)
                 cell[:0] = [""] * (missing / 2)
                 cell.extend([""] * (missing / 2 + missing % 2))
-            elif valign == "b":
-                cell[:0] = [""] * (max_cell_lines - len(cell))
             else:
                 cell.extend([""] * (max_cell_lines - len(cell)))
         return line_wrapped
@@ -450,7 +444,7 @@ latencies = {}
 counts = {}
 totals = {}
 
-def collect_data (f):
+def collect_data(f):
     """Collect latency data from the file object f and store it in
     the global variable @latencies"""
 
@@ -459,21 +453,21 @@ def collect_data (f):
 
     for line in f:
         m = re.search ("(\w+)\.\w+.(\w+)=(\w+\.\w+),(\w+),(\w+.\w+)", line)
-        if m and float(m.group(3)) != 0:
-            xlator = m.group(1)
-            op     = m.group(2)
-            time   = m.group(3)
-            count  = m.group(4)
-            total  = m.group(5)
+        if m and float(m[3]) != 0:
+            xlator = m[1]
+            op = m[2]
+            time = m[3]
+            count = m[4]
+            total = m[5]
 
-            if not xlator in latencies.keys():
-                latencies[xlator] = dict()
+            if xlator not in latencies.keys():
+                latencies[xlator] = {}
 
-            if not xlator in counts.keys():
-                counts[xlator] = dict()
+            if xlator not in counts.keys():
+                counts[xlator] = {}
 
-            if not xlator in totals.keys():
-                totals[xlator] = dict()
+            if xlator not in totals.keys():
+                totals[xlator] = {}
 
             latencies[xlator][op] = time
             counts[xlator][op]    = count

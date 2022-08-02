@@ -38,7 +38,7 @@ if sys.version_info >= (3,):
     # pack/unpacking. Again encode/decode can't be used as it
     # converts it alters size.
     def str_to_bytearray(string):
-        return bytes([ord(c) for c in string])
+        return bytes(ord(c) for c in string)
 
     def gr_create_string_buffer(size):
         return create_string_buffer(b'\0', size)

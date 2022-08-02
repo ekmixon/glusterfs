@@ -48,12 +48,12 @@ def get_subvol_num(brick_idx, vol, hot):
     cnt = int((brick_idx + 1) / subvol_size)
     rem = (brick_idx + 1) % subvol_size
     if rem > 0:
-        cnt = cnt + 1
+        cnt += 1
 
     if (tier and hot):
-        return "hot_" + str(cnt)
-    elif (tier and not hot):
-        return "cold_" + str(cnt)
+        return f"hot_{cnt}"
+    elif tier:
+        return f"cold_{cnt}"
     else:
         return str(cnt)
 
@@ -103,13 +103,15 @@ class Monitor(object):
         due to the keep-alive thread)
         """
         if not self.status.get(w[0]['dir'], None):
-            self.status[w[0]['dir']] = GeorepStatus(gconf.get("state-file"),
-                                                    w[0]['host'],
-                                                    w[0]['dir'],
-                                                    w[0]['uuid'],
-                                                    primary,
-                                                    "%s::%s" % (secondary_host,
-                                                                secondary_vol))
+            self.status[w[0]['dir']] = GeorepStatus(
+                gconf.get("state-file"),
+                w[0]['host'],
+                w[0]['dir'],
+                w[0]['uuid'],
+                primary,
+                f"{secondary_host}::{secondary_vol}",
+            )
+
         ret = 0
 
         def nwait(p, o=0):
@@ -131,12 +133,10 @@ class Monitor(object):
             return (os.WIFSIGNALED(s) and (os.WTERMSIG(s) == signal.SIGUSR1))
 
         def exit_status(s):
-            if os.WIFEXITED(s):
-                return os.WEXITSTATUS(s)
-            return 1
+            return os.WEXITSTATUS(s) if os.WIFEXITED(s) else 1
 
         conn_timeout = gconf.get("connection-timeout")
-        while ret in (0, 1):
+        while ret in {0, 1}:
             remote_user, remote_host = w[1][0].split("@")
             remote_id = w[1][1]
             # Check the status of the connected secondary node
@@ -145,11 +145,13 @@ class Monitor(object):
             current_secondary_host = remote_host
             secondary_up_hosts = get_up_nodes(secondarynodes, gconf.get("ssh-port"))
 
-            if (current_secondary_host, remote_id) not in secondary_up_hosts:
-                if len(secondary_up_hosts) > 0:
-                    remote_new = random.choice(secondary_up_hosts)
-                    remote_host = "%s@%s" % (remote_user, remote_new[0])
-                    remote_id = remote_new[1]
+            if (
+                current_secondary_host,
+                remote_id,
+            ) not in secondary_up_hosts and len(secondary_up_hosts) > 0:
+                remote_new = random.choice(secondary_up_hosts)
+                remote_host = f"{remote_user}@{remote_new[0]}"
+                remote_id = remote_new[1]
 
             # Spawn the worker in lock to avoid fd leak
             self.lock.acquire()
@@ -219,7 +221,7 @@ class Monitor(object):
                                     "connection",
                                     brick=w[0]['dir']))
                 else:
-                    logging.debug("worker(%s) connected" % w[0]['dir'])
+                    logging.debug(f"worker({w[0]['dir']}) connected")
                     while time.time() < t0 + conn_timeout:
                         ret = nwait(cpid, os.WNOHANG)
 
@@ -301,7 +303,7 @@ def distribute(primary, secondary):
         mvol = VolinfoFromGconf(primary.volume, primary=True)
     else:
         mvol = Volinfo(primary.volume, primary.host, primary=True)
-    logging.debug('primary bricks: ' + repr(mvol.bricks))
+    logging.debug(f'primary bricks: {repr(mvol.bricks)}')
     prelude = []
     secondary_host = None
     secondary_vol = None
@@ -311,7 +313,7 @@ def distribute(primary, secondary):
         ["-p", str(gconf.get("ssh-port"))] + \
         [secondary.remote_addr]
 
-    logging.debug('secondary SSH gateway: ' + secondary.remote_addr)
+    logging.debug(f'secondary SSH gateway: {secondary.remote_addr}')
 
     if rconf.args.use_gconf_volinfo:
         svol = VolinfoFromGconf(secondary.volume, primary=False)
@@ -325,15 +327,14 @@ def distribute(primary, secondary):
 
     # save this xattr for the session delete command
     old_stime_xattr_prefix = gconf.get("stime-xattr-prefix", None)
-    new_stime_xattr_prefix = "trusted.glusterfs." + mvol.uuid + "." + \
-                             svol.uuid
+    new_stime_xattr_prefix = (f"trusted.glusterfs.{mvol.uuid}." + svol.uuid)
     if not old_stime_xattr_prefix or \
        old_stime_xattr_prefix != new_stime_xattr_prefix:
         gconf.setconfig("stime-xattr-prefix", new_stime_xattr_prefix)
 
-    logging.debug('secondary bricks: ' + repr(sbricks))
+    logging.debug(f'secondary bricks: {repr(sbricks)}')
 
-    secondarynodes = set((b['host'], b["uuid"]) for b in sbricks)
+    secondarynodes = {(b['host'], b["uuid"]) for b in sbricks}
     rap = SSH.parse_ssh_address(secondary)
     secondarys = [(rap['user'] + '@' + h[0], h[1]) for h in secondarynodes]
 
@@ -345,7 +346,7 @@ def distribute(primary, secondary):
                                secondarys[idx % len(secondarys)],
                                get_subvol_num(idx, mvol, is_hot),
                                is_hot))
-    logging.debug('worker specs: ' + repr(workerspex))
+    logging.debug(f'worker specs: {repr(workerspex)}')
     return workerspex, suuid, secondary_vol, secondary_host, primary, secondarynodes
 
 
@@ -372,8 +373,7 @@ def startup(go_daemon=True):
         return
 
     x, y = pipe()
-    cpid = os.fork()
-    if cpid:
+    if cpid := os.fork():
         os.close(x)
         sys.exit()
     os.close(y)
@@ -382,10 +382,10 @@ def startup(go_daemon=True):
     for f in (sys.stdin, sys.stdout, sys.stderr):
         os.dup2(dn, f.fileno())
 
-    if not grabpidfile(pid_file + '.tmp'):
+    if not grabpidfile(f'{pid_file}.tmp'):
         raise GsyncdError("cannot grab temporary pidfile")
 
-    os.rename(pid_file + '.tmp', pid_file)
+    os.rename(f'{pid_file}.tmp', pid_file)
 
     # wait for parent to terminate
     # so we can start up with

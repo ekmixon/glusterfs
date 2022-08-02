@@ -55,10 +55,7 @@ webhooks_pool = None
 
 def boolify(value):
     value = str(value)
-    if value.lower() in ["1", "on", "true", "yes"]:
-        return True
-    else:
-        return False
+    return value.lower() in {"1", "on", "true", "yes"}
 
 
 def log_event(data):
@@ -177,9 +174,6 @@ def publish(ts, event_key, data):
 
     if _webhooks:
         plugin_webhook(message)
-    else:
-        # TODO: Default action?
-        pass
 
 
 def autoload_webhooks():
@@ -189,11 +183,8 @@ def autoload_webhooks():
     except OSError:
         st = None
 
-    if st is not None:
-        # If Stat is available and mtime is not matching with
-        # previously recorded mtime, reload the webhooks file
-        if st.st_mtime != _webhooks_file_mtime:
-            load_webhooks()
+    if st is not None and st.st_mtime != _webhooks_file_mtime:
+        load_webhooks()
 
 
 def base64_urlencode(inp):
@@ -210,11 +201,8 @@ def get_jwt_token(secret, event_type, event_ts, jwt_expiry_time_seconds=60):
     }
     header = '{"alg":"HS256","typ":"JWT"}'
     payload = json.dumps(payload, separators=(',', ':'), sort_keys=True)
-    msg = base64_urlencode(header) + "." + base64_urlencode(payload)
-    return "%s.%s" % (
-        msg,
-        base64_urlencode(hmac.HMAC(str(secret), msg, sha256).digest())
-    )
+    msg = f"{base64_urlencode(header)}.{base64_urlencode(payload)}"
+    return f"{msg}.{base64_urlencode(hmac.HMAC(str(secret), msg, sha256).digest())}"
 
 
 def save_https_cert(domain, port, cert_path):
@@ -237,11 +225,7 @@ def publish_to_webhook(url, token, secret, message_queue):
     urldata = requests.utils.urlparse(url)
     parts = urldata.netloc.split(":")
     domain = parts[0]
-    # Default https port if not specified
-    port = 443
-    if len(parts) == 2:
-        port = int(parts[1])
-
+    port = int(parts[1]) if len(parts) == 2 else 443
     cert_path = os.path.join(CERTS_DIR, url.replace("/", "_").strip())
 
     while True:
@@ -254,7 +238,7 @@ def publish_to_webhook(url, token, secret, message_queue):
             hashval = get_jwt_token(secret, event_type, event_ts)
 
         if hashval:
-            http_headers["Authorization"] = "Bearer " + hashval
+            http_headers["Authorization"] = f"Bearer {hashval}"
 
         verify = True
         while True:

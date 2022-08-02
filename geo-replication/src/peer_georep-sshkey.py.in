@@ -43,17 +43,17 @@ class NodeGenCmd(Cmd):
 
     def run(self, args):
         # Regenerate if secret.pem.pub not exists
-        if not os.path.exists(SECRET_PEM + ".pub"):
+        if not os.path.exists(f"{SECRET_PEM}.pub"):
             # Cleanup old files
-            for f in glob.glob(SECRET_PEM + "*"):
+            for f in glob.glob(f"{SECRET_PEM}*"):
                 os.remove(f)
 
             execute(["ssh-keygen", "-N", "", "-f", SECRET_PEM])
 
         # Regenerate if ssh_tar.pem.pub not exists
-        if not os.path.exists(TAR_SSH_PEM + ".pub"):
+        if not os.path.exists(f"{TAR_SSH_PEM}.pub"):
             # Cleanup old files
-            for f in glob.glob(TAR_SSH_PEM + "*"):
+            for f in glob.glob(f"{TAR_SSH_PEM}*"):
                 os.remove(f)
 
             execute(["ssh-keygen", "-N", "", "-f", TAR_SSH_PEM])
@@ -66,19 +66,17 @@ class NodeGenCmd(Cmd):
             prefix_tar_ssh_pem_pub = TAR_CMD
 
         data = {"default_pub": "", "tar_pub": ""}
-        with open(SECRET_PEM + ".pub") as f:
+        with open(f"{SECRET_PEM}.pub") as f:
             data["default_pub"] = prefix_secret_pem_pub + f.read().strip()
 
-        with open(TAR_SSH_PEM + ".pub") as f:
+        with open(f"{TAR_SSH_PEM}.pub") as f:
             data["tar_pub"] = prefix_tar_ssh_pem_pub + f.read().strip()
 
         node_output_ok(data)
 
 
 def color_status(value):
-    if value in ["UP", "OK"]:
-        return "green"
-    return "red"
+    return "green" if value in ["UP", "OK"] else "red"
 
 
 class GenCmd(Cmd):
@@ -98,9 +96,7 @@ class GenCmd(Cmd):
         table.align["KEYGEN STATUS"] = "r"
         for p in out:
             if p.ok:
-                common_secrets.append(p.output["default_pub"])
-                common_secrets.append(p.output["tar_pub"])
-
+                common_secrets.extend((p.output["default_pub"], p.output["tar_pub"]))
             table.add_row([p.hostname,
                            "UP" if p.node_up else "DOWN",
                            "OK" if p.ok else "NOT OK: {0}".format(

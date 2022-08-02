@@ -17,8 +17,7 @@ if __name__ == '__main__':
     (opts, args) = op.parse_args()
 
 
-    mnt_point = get_mnt_point(opts.vol)
-    if mnt_point:
+    if mnt_point := get_mnt_point(opts.vol):
         unmount(mnt_point)
     else:
         sys.exit("get_mnt_point returned none for mount point")

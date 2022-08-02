@@ -34,11 +34,11 @@ def output_success(path):
 def full_dir_path(gfid):
     out_path = ""
     while True:
-        path = os.path.join(".glusterfs", gfid[0:2], gfid[2:4], gfid)
+        path = os.path.join(".glusterfs", gfid[:2], gfid[2:4], gfid)
         path_readlink = os.readlink(path)
         pgfid = os.path.dirname(path_readlink)
         out_path = os.path.join(os.path.basename(path_readlink), out_path)
-        if pgfid == "../../00/00/%s" % ROOT_GFID:
+        if pgfid == f"../../00/00/{ROOT_GFID}":
             out_path = os.path.join("./", out_path)
             break
         gfid = os.path.basename(pgfid)
@@ -54,20 +54,16 @@ def find_path_from_changelog(fd, gfid):
     """
     content = fd.read()
 
-    pattern = "E%s" % gfid
+    pattern = f"E{gfid}"
     pattern += "\x00(3|23)\x00\d+\x00\d+\x00\d+\x00([^\x00]+)/([^\x00]+)"
     pat = re.compile(pattern)
-    match = pat.search(content)
-
-    if match:
-        pgfid = match.group(2)
-        basename = match.group(3)
+    if match := pat.search(content):
+        pgfid = match[2]
+        basename = match[3]
         if pgfid == ROOT_GFID:
             return os.path.join("./", basename)
-        else:
-            full_path_parent = full_dir_path(pgfid)
-            if full_path_parent:
-                return os.path.join(full_path_parent, basename)
+        if full_path_parent := full_dir_path(pgfid):
+            return os.path.join(full_path_parent, basename)
 
     return None
 
@@ -83,7 +79,7 @@ def gfid_to_path(gfid):
     GFIDs are different then Some thing is changed(May be Rename)
     """
     gfid = gfid.strip()
-    gpath = os.path.join(".glusterfs", gfid[0:2], gfid[2:4], gfid)
+    gpath = os.path.join(".glusterfs", gfid[:2], gfid[2:4], gfid)
     try:
         output_success(full_dir_path(gfid))
         return
@@ -101,8 +97,8 @@ def gfid_to_path(gfid):
     path = None
     found_changelog = False
     changelog_parse_try = 0
-    for i in range(CHANGELOG_SEARCH_MAX_TRY):
-        cl = os.path.join(".glusterfs/changelogs", "CHANGELOG.%s" % ctime)
+    for _ in range(CHANGELOG_SEARCH_MAX_TRY):
+        cl = os.path.join(".glusterfs/changelogs", f"CHANGELOG.{ctime}")
 
         try:
             with open(cl, "rb") as f:
@@ -135,10 +131,7 @@ def gfid_to_path(gfid):
 
 
 def main():
-    num_arguments = 3
-    if not sys.stdin.isatty():
-        num_arguments = 2
-
+    num_arguments = 3 if sys.stdin.isatty() else 2
     if len(sys.argv) != num_arguments:
         sys.stderr.write("Invalid arguments\nUsage: "
                          "%s <BRICK_PATH> <GFID_FILE>\n" % sys.argv[0])

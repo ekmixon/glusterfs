@@ -24,7 +24,7 @@ def find_htime_path(brick_path):
         if os.path.isfile(os.path.join(htime_dir,file)) and file.startswith("HTIME"):
             dirs.append(os.path.join(htime_dir, file))
         else:
-            raise FileNotFoundError("%s unavailable" % (os.path.join(htime_dir, file)))
+            raise FileNotFoundError(f"{os.path.join(htime_dir, file)} unavailable")
     return dirs
 
 def modify_htime_file(brick_path):
@@ -60,7 +60,7 @@ def modify_htime_file(brick_path):
                         os.remove(pth)
 
         #rename temp_htime_file with htime file
-        os.rename(htime_file_path, os.path.join('%s.bak'%htime_file_path))
+        os.rename(htime_file_path, os.path.join(f'{htime_file_path}.bak'))
         os.rename(temp_htime_path, htime_file_path)
 
 if __name__ == "__main__":

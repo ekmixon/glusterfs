@@ -97,7 +97,7 @@ if __name__ == '__main__':
     if pargfid == 'ROOT':
         pargfid = '.gfid/00000000-0000-0000-0000-000000000001'
     else:
-        pargfid = '.gfid/' + pargfid
+        pargfid = f'.gfid/{pargfid}'
 
     blob = None
 
@@ -111,14 +111,13 @@ if __name__ == '__main__':
     else: # not yet...
         sys.exit(-1)
 
-    if blob == None:
+    if blob is None:
         sys.exit(-1)
     try:
         Xattr.lsetxattr(pargfid, 'glusterfs.gfid.newfile', blob)
     except OSError:
         ex = sys.exc_info()[1]
-        if not ex.errno in [EEXIST]:
+        if ex.errno not in [EEXIST]:
             raise
-            sys.exit(-1)
     print("File creation OK")
     sys.exit(0)

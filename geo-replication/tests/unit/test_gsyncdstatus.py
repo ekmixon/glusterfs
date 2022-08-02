@@ -27,9 +27,9 @@ class GeorepStatusTestCase(unittest.TestCase):
         cls.monitor_status_file = os.path.join(cls.work_dir, "monitor.status")
         cls.brick = "/exports/bricks/b1"
         cls.status = GeorepStatus(cls.monitor_status_file, cls.brick)
-        cls.statusfile = os.path.join(cls.work_dir,
-                                      "brick_%s.status"
-                                      % urllib.quote_plus(cls.brick))
+        cls.statusfile = os.path.join(
+            cls.work_dir, f"brick_{urllib.quote_plus(cls.brick)}.status"
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -37,10 +37,7 @@ class GeorepStatusTestCase(unittest.TestCase):
         os.remove(cls.monitor_status_file)
 
     def _filter_dict(self, inp, keys):
-        op = {}
-        for k in keys:
-            op[k] = inp.get(k, None)
-        return op
+        return {k: inp.get(k, None) for k in keys}
 
     def test_monitor_status_file_created(self):
         self.assertTrue(os.path.exists(self.monitor_status_file))

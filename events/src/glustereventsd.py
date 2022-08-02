@@ -75,7 +75,7 @@ class GlusterEventsRequestHandler(socketserver.BaseRequestHandler):
             # the form <TIMESTAMP> <TYPE> <DETAIL>, Get Event name for the
             # received Type/Key and construct a function name starting with
             # handle_ For example: handle_event_volume_create
-            func_name = "handle_" + all_events[int(key)].lower()
+            func_name = f"handle_{all_events[int(key)].lower()}"
         except IndexError:
             # This type of Event is not handled?
             logger.warn("Unhandled Event: {0}".format(key))

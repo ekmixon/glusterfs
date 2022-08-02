@@ -26,8 +26,7 @@ class GLogger(Logger):
         rv = Logger.makeRecord(self, name, level, *a)
         rv.nsecs = (rv.created - int(rv.created)) * 1000000
         fr = sys._getframe(4)
-        callee = fr.f_locals.get('self')
-        if callee:
+        if callee := fr.f_locals.get('self'):
             ctx = str(type(callee)).split("'")[1].split('.')[-1]
         else:
             ctx = '<top>'
@@ -44,7 +43,7 @@ LOGFMT = ("[%(asctime)s.%(nsecs)d] %(lvlnam)s [%(module)s{0}"
 
 def setup_logging(level="INFO", label="", log_file=""):
     if label:
-        label = "(" + label + ")"
+        label = f"({label})"
 
     filename = None
     stream = None

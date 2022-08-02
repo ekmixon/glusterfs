@@ -28,8 +28,7 @@ def process_failure(url, node):
                 if VERBOSE:
                     print(t2.encode('utf-8'))
                 if t2.find("Wstat") != -1:
-                    test_case = re.search('\./tests/.*\.t', t2)
-                    if test_case:
+                    if test_case := re.search('\./tests/.*\.t', t2):
                         summary[test_case.group()].append((url, node))
             accum = []
         elif t.find("cur_cores=/") != -1:
@@ -67,9 +66,7 @@ def print_summary(failed_builds, total_builds, html=False):
             )
     ]
 
-    template = 0
-    if html:
-        template = 1
+    template = 1 if html else 0
     print(render(
             count[template],
             {'failed': failed_builds, 'total': total_builds}

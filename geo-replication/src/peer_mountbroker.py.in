@@ -61,8 +61,7 @@ class MountbrokerUserMgmt(object):
         return self._options.get("geo-replication-log-group", None)
 
     def _get_write_data(self):
-        op = "volume management\n"
-        op += "    type mgmt/glusterd\n"
+        op = "volume management\n" + "    type mgmt/glusterd\n"
         for k, v in self._options.items():
             if k.startswith("mountbroker-geo-replication."):
                 # Users will be added seperately
@@ -82,11 +81,11 @@ class MountbrokerUserMgmt(object):
         return op
 
     def save(self):
-        with open(self.volfile + "_tmp", "w") as f:
+        with open(f"{self.volfile}_tmp", "w") as f:
             f.write(self._get_write_data())
             f.flush()
             os.fsync(f.fileno())
-        os.rename(self.volfile + "_tmp", self.volfile)
+        os.rename(f"{self.volfile}_tmp", self.volfile)
 
     def set_mount_root_and_group(self, mnt_root, group):
         self._options["mountbroker-root"] = mnt_root
@@ -106,15 +105,7 @@ class MountbrokerUserMgmt(object):
         self.user_volumes[user].add(volume)
 
     def remove(self, volume=None, user=None):
-        if user is not None:
-            if volume is None:
-                self.user_volumes[user] = set()
-            else:
-                try:
-                    self.user_volumes.get(user, set()).remove(volume)
-                except KeyError:
-                    pass
-        else:
+        if user is None:
             if volume is None:
                 return
 
@@ -124,20 +115,24 @@ class MountbrokerUserMgmt(object):
                 except KeyError:
                     pass
 
+        elif volume is None:
+            self.user_volumes[user] = set()
+        else:
+            try:
+                self.user_volumes.get(user, set()).remove(volume)
+            except KeyError:
+                pass
+
     def info(self):
         # Convert Volumes set into Volumes list
-        users = {}
-        for k, v in self.user_volumes.items():
-            users[k] = list(v)
-
-        data = {
+        users = {k: list(v) for k, v in self.user_volumes.items()}
+        return {
             "mountbroker-root": self._options.get("mountbroker-root", "None"),
             "geo-replication-log-group": self._options.get(
-                "geo-replication-log-group", ""),
-            "users": users
+                "geo-replication-log-group", ""
+            ),
+            "users": users,
         }
-
-        return data
 
 
 class NodeSetup(Cmd):
@@ -164,9 +159,7 @@ class NodeSetup(Cmd):
         try:
             os.makedirs(args.mount_root)
         except OSError as e:
-            if e.errno == EEXIST:
-                pass
-            else:
+            if e.errno != EEXIST:
                 node_output_notok("Unable to Create {0}".format(
                     args.mount_root))
 
@@ -175,18 +168,14 @@ class NodeSetup(Cmd):
             execute(["semanage", "fcontext", "-a", "-e",
                      "/home", args.mount_root])
         except OSError as e:
-            if e.errno == ENOENT:
-                pass
-            else:
+            if e.errno != ENOENT:
                 node_output_notok(
                     "Unable to run semanage: {0}".format(e))
 
         try:
             execute(["restorecon", "-Rv", args.mount_root])
         except OSError as e:
-            if e.errno == ENOENT:
-                pass
-            else:
+            if e.errno != ENOENT:
                 node_output_notok(
                     "Unable to run restorecon: {0}".format(e))
 
@@ -211,10 +200,7 @@ class NodeSetup(Cmd):
 
 
 def color_status(value):
-    if value.lower() in ("up", "ok", "yes"):
-        return "green"
-    else:
-        return "red"
+    return "green" if value.lower() in ("up", "ok", "yes") else "red"
 
 
 class CliSetup(Cmd):
@@ -281,12 +267,13 @@ class CliStatus(Cmd):
 
         for p in out:
             node_data = p.output
-            if node_data == "" or node_data == "N/A":
+            if node_data in ["", "N/A"]:
                 node_data = {}
 
-            users_row_data = ""
-            for k, v in node_data.get("users", {}).items():
-                users_row_data += "{0}({1}) ".format(k, ", ".join(v))
+            users_row_data = "".join(
+                "{0}({1}) ".format(k, ", ".join(v))
+                for k, v in node_data.get("users", {}).items()
+            )
 
             if not users_row_data:
                 users_row_data = "None"

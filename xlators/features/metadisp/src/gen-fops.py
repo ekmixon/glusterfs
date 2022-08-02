@@ -151,7 +151,7 @@ def gen_fops():
     print("};")
 
 
-for l in open(sys.argv[1], "r").readlines():
+for l in open(sys.argv[1], "r"):
     if l.find("#pragma generate") != -1:
         print("/* BEGIN GENERATED CODE - DO NOT MODIFY */")
         gen_fops()

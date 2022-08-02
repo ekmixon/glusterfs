@@ -24,7 +24,7 @@ libgfc = CDLL(find_library("gfchangelog"), mode=RTLD_GLOBAL, use_errno=True)
 
 def raise_oserr(prefix=None):
     errn = get_errno()
-    prefix_or_empty = prefix + ": " if prefix else ""
+    prefix_or_empty = f"{prefix}: " if prefix else ""
     raise ChangelogException(errn, prefix_or_empty + os.strerror(errn))
 
 

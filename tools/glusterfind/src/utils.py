@@ -63,8 +63,7 @@ def find(path, callback_func=lambda x: True, filter_func=lambda x: True,
     for p in os.listdir(path):
         full_path = os.path.join(path, p)
 
-        is_dir = os.path.isdir(full_path)
-        if is_dir:
+        if is_dir := os.path.isdir(full_path):
             if subdirs_crawl:
                 find(full_path, callback_func, filter_func, ignore_dirs)
             else:
@@ -127,7 +126,7 @@ def create_file(path, exit_on_err=False, logger=None):
         open(path, 'w').close()
     except (OSError, IOError) as e:
         if exit_on_err:
-            fail("Failed to create file %s: %s" % (path, e), logger=logger)
+            fail(f"Failed to create file {path}: {e}", logger=logger)
         else:
             raise
 
@@ -142,11 +141,9 @@ def mkdirp(path, exit_on_err=False, logger=None):
     try:
         os.makedirs(path)
     except (OSError, IOError) as e:
-        if e.errno == EEXIST and os.path.isdir(path):
-            pass
-        else:
+        if e.errno != EEXIST or not os.path.isdir(path):
             if exit_on_err:
-                fail("Fail to create dir %s: %s" % (path, e), logger=logger)
+                fail(f"Fail to create dir {path}: {e}", logger=logger)
             else:
                 raise
 
@@ -170,7 +167,7 @@ def execute(cmd, exit_msg=None, logger=None):
 
     (out, err) = p.communicate()
     if p.returncode != 0 and exit_msg is not None:
-        fail("%s: %s" % (exit_msg, err), p.returncode, logger=logger)
+        fail(f"{exit_msg}: {err}", p.returncode, logger=logger)
 
     return (p.returncode, out, err)
 
@@ -187,11 +184,11 @@ def symlink_gfid_to_path(brick, gfid):
 
     out_path = ""
     while True:
-        path = os.path.join(brick, ".glusterfs", gfid[0:2], gfid[2:4], gfid)
+        path = os.path.join(brick, ".glusterfs", gfid[:2], gfid[2:4], gfid)
         path_readlink = os.readlink(path)
         pgfid = os.path.dirname(path_readlink)
         out_path = os.path.join(os.path.basename(path_readlink), out_path)
-        if pgfid == "../../00/00/%s" % ROOT_GFID:
+        if pgfid == f"../../00/00/{ROOT_GFID}":
             break
         gfid = os.path.basename(pgfid)
     return out_path
@@ -214,10 +211,7 @@ def is_host_local(host_uuid):
     # Get UUID only if it is not done previously
     # else Cache the UUID value
     my_uuid = get_my_uuid()
-    if my_uuid == host_uuid:
-        return True
-
-    return False
+    return my_uuid == host_uuid
 
 
 def get_changelog_rollover_time(volumename):
@@ -247,12 +241,9 @@ def output_path_prepare(path, args):
     if args.output_prefix != ".":
         path = os.path.join(args.output_prefix, path)
         if path.endswith("/"):
-            path = path[0:len(path)-1]
+            path = path[:-1]
 
-    if args.no_encode:
-        return path
-    else:
-        return quote_plus_space_newline(path)
+    return path if args.no_encode else quote_plus_space_newline(path)
 
 
 def unquote_plus_space_newline(s):

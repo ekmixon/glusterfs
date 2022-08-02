@@ -19,7 +19,7 @@ def get_changes(brick, scratch_dir, log_file, log_level, interval):
             if change_list:
                 print(change_list)
             for change in change_list:
-                print(('done with %s' % (change)))
+                print(f'done with {change}')
                 cl.cl_done(change)
             time.sleep(interval)
     except OSError:
@@ -28,7 +28,9 @@ def get_changes(brick, scratch_dir, log_file, log_level, interval):
 
 if __name__ == '__main__':
     if len(sys.argv) != 6:
-        print(("usage: %s <brick> <scratch-dir> <log-file> <fetch-interval>"
-              % (sys.argv[0])))
+        print(
+            f"usage: {sys.argv[0]} <brick> <scratch-dir> <log-file> <fetch-interval>"
+        )
+
         sys.exit(1)
     get_changes(sys.argv[1], sys.argv[2], sys.argv[3], 9, int(sys.argv[4]))

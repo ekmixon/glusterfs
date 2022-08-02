@@ -110,9 +110,7 @@ def gf_mount_ready():
        logging.error("failed to get the xattr value")
        return 1
     ret = ret.rstrip('\x00')
-    if ret == "1":
-       return 1
-    return 0
+    return 1 if ret == "1" else 0
 
 def norm(s):
     if s:
@@ -134,7 +132,7 @@ def update_file(path, updater, merger=lambda f: True):
         if not merger(fr):
             return
 
-        tmpp = path + '.tmp.' + str(os.getpid())
+        tmpp = f'{path}.tmp.{str(os.getpid())}'
         fd = os.open(tmpp, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         try:
             fw = os.fdopen(fd, 'wb', 0)
@@ -184,12 +182,10 @@ def setup_ssh_ctl(ctld, remote_addr, resource_url):
     file is created per directory.
     """
     content_sha256 = content_sha256[:32]
-    fname = os.path.join(rconf.ssh_ctl_dir,
-                         "%s.mft" % content_sha256)
+    fname = os.path.join(rconf.ssh_ctl_dir, f"{content_sha256}.mft")
 
     create_manifest(fname, encoded_content)
-    ssh_ctl_path = os.path.join(rconf.ssh_ctl_dir,
-                                "%s.sock" % content_sha256)
+    ssh_ctl_path = os.path.join(rconf.ssh_ctl_dir, f"{content_sha256}.sock")
     rconf.ssh_ctl_args = ["-oControlMaster=auto", "-S", ssh_ctl_path]
 
 
@@ -226,9 +222,7 @@ def grabpidfile(fname=None, setpid=True):
     """.grabfile customization for pid files"""
     if not fname:
         fname = gconf.get("pid-file")
-    content = None
-    if setpid:
-        content = str(os.getpid()) + '\n'
+    content = str(os.getpid()) + '\n' if setpid else None
     return grabfile(fname, content=content)
 
 
@@ -259,9 +253,7 @@ def finalize(*args, **kwargs):
                 os.unlink(rconf.pid_file)
             except:
                 ex = sys.exc_info()[1]
-                if ex.errno == ENOENT:
-                    pass
-                else:
+                if ex.errno != ENOENT:
                     raise
     if rconf.ssh_ctl_dir and not rconf.cpid:
         def handle_rm_error(func, path, exc_info):
@@ -285,9 +277,6 @@ def finalize(*args, **kwargs):
                 os.rmdir(rconf.mount_point)
             except OSError:
                 pass
-        else:
-            pass
-
     if rconf.log_exit:
         logging.info("exiting.")
     sys.stdout.flush()
@@ -318,10 +307,13 @@ def log_raise_exception(excont):
         if isinstance(exc, GsyncdError):
             if is_filelog:
                 logging.error(exc.args[0])
-            sys.stderr.write('failure: ' + exc.args[0] + '\n')
-        elif isinstance(exc, PickleError) or isinstance(exc, EOFError) or \
-            ((isinstance(exc, OSError) or isinstance(exc, IOError)) and
-             exc.errno == EPIPE):
+            sys.stderr.write(f'failure: {exc.args[0]}' + '\n')
+        elif (
+            isinstance(exc, PickleError)
+            or isinstance(exc, EOFError)
+            or isinstance(exc, (OSError, IOError))
+            and exc.errno == EPIPE
+        ):
             logging.error('connection to peer is broken')
             if hasattr(rconf, 'transport'):
                 rconf.transport.wait()
@@ -360,7 +352,7 @@ def log_raise_exception(excont):
         if not logtag and logging.getLogger().isEnabledFor(logging.DEBUG):
             logtag = "FULL EXCEPTION TRACE"
         if logtag:
-            logging.exception(logtag + ": ")
+            logging.exception(f"{logtag}: ")
             sys.stderr.write("failed with %s: %s.\n" % (type(exc).__name__, exc))
         excont.exval = 1
         sys.exit(excont.exval)
@@ -480,7 +472,7 @@ def eintr_wrap(func, exc, *args):
             return func(*args)
         except exc:
             ex = sys.exc_info()[1]
-            if not ex.args[0] == EINTR:
+            if ex.args[0] != EINTR:
                 raise
 
 
@@ -513,7 +505,7 @@ def get_node_uuid():
                 break
 
     if NodeID == "":
-        raise GsyncdError("Failed to get Host UUID from %s" % UUID_FILE)
+        raise GsyncdError(f"Failed to get Host UUID from {UUID_FILE}")
     return NodeID
 
 
@@ -522,11 +514,7 @@ def is_host_local(host_id):
 
 
 def funcode(f):
-    fc = getattr(f, 'func_code', None)
-    if not fc:
-        # python 3
-        fc = f.__code__
-    return fc
+    return getattr(f, 'func_code', None) or f.__code__
 
 
 def memoize(f):
@@ -534,11 +522,12 @@ def memoize(f):
     fn = fc.co_name
 
     def ff(self, *a, **kw):
-        rv = getattr(self, '_' + fn, None)
+        rv = getattr(self, f'_{fn}', None)
         if rv is None:
             rv = f(self, *a, **kw)
-            setattr(self, '_' + fn, rv)
+            setattr(self, f'_{fn}', rv)
         return rv
+
     return ff
 
 
@@ -596,13 +585,7 @@ def get_gfid_from_mnt(gfidpath):
 
 def matching_disk_gfid(gfid, entry):
     disk_gfid = get_gfid_from_mnt(entry)
-    if isinstance(disk_gfid, int):
-        return False
-
-    if not gfid == disk_gfid:
-        return False
-
-    return True
+    return False if isinstance(disk_gfid, int) else gfid == disk_gfid
 
 
 class NoStimeAvailable(Exception):
@@ -660,16 +643,12 @@ def unshare_propagation_supported():
     if unshare_mnt_propagation is not None:
         return unshare_mnt_propagation
 
-    unshare_mnt_propagation = False
     p = subprocess.Popen(["unshare", "--help"],
                          stderr=subprocess.PIPE,
                          stdout=subprocess.PIPE,
                          universal_newlines=True)
     out, err = p.communicate()
-    if p.returncode == 0:
-        if "propagation" in out:
-            unshare_mnt_propagation = True
-
+    unshare_mnt_propagation = p.returncode == 0 and "propagation" in out
     return unshare_mnt_propagation
 
 
@@ -678,15 +657,12 @@ def get_rsync_version(rsync_cmd):
     if rsync_version is not None:
         return rsync_version
 
-    rsync_version = "0"
     p = subprocess.Popen([rsync_cmd, "--version"],
                          stderr=subprocess.PIPE,
                          stdout=subprocess.PIPE,
                          universal_newlines=True)
     out, err = p.communicate()
-    if p.returncode == 0:
-        rsync_version = out.split(" ", 4)[3]
-
+    rsync_version = out.split(" ", 4)[3] if p.returncode == 0 else "0"
     return rsync_version
 
 
@@ -702,11 +678,13 @@ def get_slv_dir_path(slv_host, slv_volume, gfid):
     # Result of readlink would be of format as below.
     # readlink = "../../pgfid[0:2]/pgfid[2:4]/pgfid/basename"
     for brick in slv_bricks:
-        dir_path = errno_wrap(os.path.join,
-                              [brick['dir'],
-                               ".glusterfs", gfid[0:2],
-                               gfid[2:4],
-                               gfid], [ENOENT], [ESTALE])
+        dir_path = errno_wrap(
+            os.path.join,
+            [brick['dir'], ".glusterfs", gfid[:2], gfid[2:4], gfid],
+            [ENOENT],
+            [ESTALE],
+        )
+
         if dir_path != ENOENT:
             try:
                 realpath = errno_wrap(os.readlink, [dir_path],
@@ -745,10 +723,8 @@ def lf(event, **kwargs):
     lf("Config Change", sync_jobs=4, brick=/bricks/b1) will be
     converted as "Config Change [{brick=/bricks/b1}, {sync_jobs=4}]"
     """
-    msgparts = []
-    for k, v in kwargs.items():
-        msgparts.append("{%s=%s}" % (k, v))
-    return "%s [%s]" % (event, ", ".join(msgparts))
+    msgparts = ["{%s=%s}" % (k, v) for k, v in kwargs.items()]
+    return f'{event} [{", ".join(msgparts)}]'
 
 
 class Popen(subprocess.Popen):
@@ -848,7 +824,8 @@ class Popen(subprocess.Popen):
         lp = ''
 
         def logerr(l):
-            logging.error(self.args[0] + "> " + l)
+            logging.error(f"{self.args[0]}> {l}")
+
         for l in self.elines:
             ls = l.split(b'\n')
             ls[0] = lp + ls[0]
@@ -880,11 +857,8 @@ class Popen(subprocess.Popen):
                 time.sleep(0.1)
                 self.kill()
                 self.wait()
-        while True:
-            if not select([self.stderr], [], [], 0.1)[0]:
-                break
-            b = os.read(self.stderr.fileno(), 1024)
-            if b:
+        while select([self.stderr], [], [], 0.1)[0]:
+            if b := os.read(self.stderr.fileno(), 1024):
                 elines.append(b.decode())
             else:
                 break
@@ -903,7 +877,7 @@ def host_brick_split(value):
     """
     parts = value.split(":")
     brick = parts[-1]
-    hostparts = parts[0:-1]
+    hostparts = parts[:-1]
     return (":".join(hostparts), brick)
 
 
@@ -916,18 +890,29 @@ class Volinfo(object):
             gluster_cmd_dir = gconf.get("secondary-gluster-command-dir")
 
         gluster_cmd = os.path.join(gluster_cmd_dir, 'gluster')
-        po = Popen(prelude + [gluster_cmd, '--xml', '--remote-host=' + host,
-                              'volume', 'info', vol],
-                   stdout=PIPE, stderr=PIPE, universal_newlines=True)
+        po = Popen(
+            (
+                prelude
+                + [
+                    gluster_cmd,
+                    '--xml',
+                    f'--remote-host={host}',
+                    'volume',
+                    'info',
+                    vol,
+                ]
+            ),
+            stdout=PIPE,
+            stderr=PIPE,
+            universal_newlines=True,
+        )
+
         vix = po.stdout.read()
         po.wait()
         po.terminate_geterr()
         vi = XET.fromstring(vix)
         if vi.find('opRet').text != '0':
-            if prelude:
-                via = '(via %s) ' % ' '.join(prelude)
-            else:
-                via = ' '
+            via = f"(via {' '.join(prelude)}) " if prelude else ' '
             raise GsyncdError('getting volume info of %s%s '
                               'failed with errorcode %s' %
                               (vol, via, vi.find('opErrno').text))
@@ -936,13 +921,13 @@ class Volinfo(object):
         self.host = host
 
     def get(self, elem):
-        return self.tree.findall('.//' + elem)
+        return self.tree.findall(f'.//{elem}')
 
     def is_tier(self):
         return (self.get('typeStr')[0].text == 'Tier')
 
     def is_hot(self, brickpath):
-        logging.debug('brickpath: ' + repr(brickpath))
+        logging.debug(f'brickpath: {repr(brickpath)}')
         return brickpath in self.hot_bricks
 
     @property
@@ -965,7 +950,7 @@ class Volinfo(object):
     def replica_count(self, tier, hot):
         if (tier and hot):
             return int(self.get('hotBricks/hotreplicaCount')[0].text)
-        elif (tier and not hot):
+        elif tier:
             return int(self.get('coldBricks/coldreplicaCount')[0].text)
         else:
             return int(self.get('replicaCount')[0].text)
@@ -976,7 +961,7 @@ class Volinfo(object):
             # hence no xml output, so returning 0. In case, if it's
             # supported later, we should change here.
             return 0
-        elif (tier and not hot):
+        elif tier:
             return int(self.get('coldBricks/colddisperseCount')[0].text)
         else:
             return int(self.get('disperseCount')[0].text)
@@ -984,7 +969,7 @@ class Volinfo(object):
     def distribution_count(self, tier, hot):
         if (tier and hot):
             return int(self.get('hotBricks/hotdistCount')[0].text)
-        elif (tier and not hot):
+        elif tier:
             return int(self.get('coldBricks/colddistCount')[0].text)
         else:
             return int(self.get('distCount')[0].text)
@@ -995,10 +980,7 @@ class Volinfo(object):
         return [b.text for b in self.get('hotBricks/brick')]
 
     def get_hot_bricks_count(self, tier):
-        if (tier):
-            return int(self.get('hotBricks/hotbrickCount')[0].text)
-        else:
-            return 0
+        return int(self.get('hotBricks/hotbrickCount')[0].text) if tier else 0
 
 
 class VolinfoFromGconf(object):
@@ -1039,7 +1021,7 @@ class VolinfoFromGconf(object):
     @memoize
     def bricks(self):
         pfx = "primary-" if self.primary else "secondary-"
-        bricks_data = gconf.get(pfx + "bricks")
+        bricks_data = gconf.get(f"{pfx}bricks")
         if bricks_data is None:
             return []
 
@@ -1057,7 +1039,7 @@ class VolinfoFromGconf(object):
             if self.possible_path(parts[-1]):
                 bpath = parts[-1]
                 # Set all parts except last
-                parts = parts[0:-1]
+                parts = parts[:-1]
 
             out.append({
                 "host": ":".join(parts),   # if remaining parts are IPv6 name
@@ -1106,13 +1088,7 @@ def can_ssh(host, port=22):
 
 
 def get_up_nodes(hosts, port):
-    # List of hosts with Hostname/IP and UUID
-    up_nodes = []
-    for h in hosts:
-        if can_ssh(h[0], port):
-            up_nodes.append(h)
-
-    return up_nodes
+    return [h for h in hosts if can_ssh(h[0], port)]
 
 
 def ssh_cipher_present(sshopts):
@@ -1120,11 +1096,4 @@ def ssh_cipher_present(sshopts):
     Returns True if user has defined a custom cipher to
     use for the SSH connection under rysnc-ssh-options.
     """
-    if not sshopts:
-        return False
-
-    for opt in sshopts:
-        if opt[:2] == "-c":
-            return True
-
-    return False
+    return any(opt[:2] == "-c" for opt in sshopts) if sshopts else False

@@ -23,8 +23,7 @@ import binascii
 
 # Calculate the now() time into a 64-bit integer value
 def epoch_now():
-        epoch_time = int(time.mktime(time.localtime())) << 32
-        return epoch_time
+        return int(time.mktime(time.localtime())) << 32
 
 # Read glusterd UUID and extract first 32-bit of it
 def epoch_uuid():
@@ -36,13 +35,12 @@ def epoch_uuid():
 
         uuid_bin = binascii.unhexlify(glusterd_uuid.replace("-",""))
 
-        epoch_uuid = int(binascii.hexlify(uuid_bin), 32) & 0xFFFF0000
-        return epoch_uuid
+        return int(binascii.hexlify(uuid_bin), 32) & 0xFFFF0000
 
 # Construct epoch as follows -
 #        first 32-bit contains the now() time
 #        rest 32-bit value contains the local glusterd node uuid
 epoch = (epoch_now() | epoch_uuid())
-print((str(epoch)))
+print(epoch)
 
 exit(0)

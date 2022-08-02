@@ -26,19 +26,18 @@ def gethostbyname(hnam):
         return socket.gethostbyname(hnam)
     except socket.gaierror:
         ex = sys.exc_info()[1]
-        raise GsyncdError("failed to resolve %s: %s" %
-                          (hnam, ex.strerror))
+        raise GsyncdError(f"failed to resolve {hnam}: {ex.strerror}")
 
 
 def secondary_url(urldata):
     urldata = urldata.replace("ssh://", "")
     host, vol = urldata.split("::")
     vol = vol.split(":")[0]
-    return "%s::%s" % (host, vol)
+    return f"{host}::{vol}"
 
 
 def init_gsyncd_template_conf():
-    path = GLUSTERD_WORKDIR + "/geo-replication/gsyncd_template.conf"
+    path = f"{GLUSTERD_WORKDIR}/geo-replication/gsyncd_template.conf"
     dname = os.path.dirname(path)
     if not os.path.exists(dname):
         try:
@@ -58,8 +57,8 @@ def init_gsyncd_session_conf(primary, secondary):
     secondaryhost = secondaryhost.split("@")[-1]
 
     # Session Config File
-    path = "%s/geo-replication/%s_%s_%s/gsyncd.conf" % (
-        GLUSTERD_WORKDIR, primary, secondaryhost, secondaryvol)
+    path = f"{GLUSTERD_WORKDIR}/geo-replication/{primary}_{secondaryhost}_{secondaryvol}/gsyncd.conf"
+
 
     if os.path.exists(os.path.dirname(path)) and not os.path.exists(path):
         fd = os.open(path, os.O_CREAT | os.O_RDWR)
@@ -84,10 +83,7 @@ def upgrade():
     # fail when it does stat to check the existence.
     init_gsyncd_template_conf()
 
-    inet6 = False
-    if "--inet6" in sys.argv:
-        inet6 = True
-
+    inet6 = "--inet6" in sys.argv
     if "--monitor" in sys.argv:
         # python gsyncd.py --path=/bricks/b1
         # --monitor -c gsyncd.conf
@@ -147,15 +143,14 @@ def upgrade():
             host = host.replace("ssh://", "")
             remote_addr = host
             if "@" not in remote_addr:
-                remote_addr = "root@" + remote_addr
+                remote_addr = f"root@{remote_addr}"
 
             user, hname = remote_addr.split("@")
 
             if not inet6:
                 hname = gethostbyname(hname)
 
-            print(("ssh://%s@%s:gluster://127.0.0.1:%s" % (
-                user, hname, vol)))
+            print(f"ssh://{user}@{hname}:gluster://127.0.0.1:{vol}")
 
         sys.exit(0)
     elif "--normalize-url" in sys.argv:
@@ -164,7 +159,7 @@ def upgrade():
         p = ArgumentParser()
         p.add_argument("--normalize-url")
         pargs = p.parse_known_args(sys.argv[1:])[0]
-        print(("ssh://%s" % secondary_url(pargs.normalize_url)))
+        print(f"ssh://{secondary_url(pargs.normalize_url)}")
         sys.exit(0)
     elif "--config-get-all" in sys.argv:
         #  -c gsyncd.conf --iprefix=/var :gv1 f241::gv2 --config-get-all
@@ -289,9 +284,10 @@ def upgrade():
             "config-set",
             pargs.primary.strip(":"),
             secondary_url(pargs.secondary),
-            "--name=%s" % pargs.name,
-            "--value=%s" % pargs.value
+            f"--name={pargs.name}",
+            f"--value={pargs.value}",
         ]
+
     elif "--config-check" in sys.argv:
         # --config-check georep_session_working_dir
         p = ArgumentParser()
@@ -340,7 +336,7 @@ def upgrade():
         init_gsyncd_session_conf(pargs.primary, pargs.secondary)
 
         paths = pargs.path_list.split("--path=")
-        paths = ["--path=%s" % x.strip() for x in paths if x.strip() != ""]
+        paths = [f"--path={x.strip()}" for x in paths if x.strip() != ""]
 
         # Modified sys.argv
         sys.argv = [

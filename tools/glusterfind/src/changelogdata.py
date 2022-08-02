@@ -146,10 +146,10 @@ class ChangelogData(object):
     def _get(self, tablename, filters):
         # SELECT * FROM <TABLENAME> WHERE <CONDITION>
         params = []
-        query = "SELECT * FROM %s WHERE 1=1" % tablename
+        query = f"SELECT * FROM {tablename} WHERE 1=1"
 
         for key, value in filters.items():
-            query += " AND %s = ?" % key
+            query += f" AND {key} = ?"
             params.append(value)
 
         return self.cursor_reader.execute(query, params)
@@ -157,29 +157,28 @@ class ChangelogData(object):
     def _get_distinct(self, tablename, distinct_field, filters):
         # SELECT DISTINCT <COL> FROM <TABLENAME> WHERE <CONDITION>
         params = []
-        query = "SELECT DISTINCT %s FROM %s WHERE 1=1" % (distinct_field,
-                                                          tablename)
+        query = f"SELECT DISTINCT {distinct_field} FROM {tablename} WHERE 1=1"
 
         for key, value in filters.items():
-            query += " AND %s = ?" % key
+            query += f" AND {key} = ?"
             params.append(value)
 
         return self.cursor_reader.execute(query, params)
 
     def _delete(self, tablename, filters):
         # DELETE FROM <TABLENAME> WHERE <CONDITIONS>
-        query = "DELETE FROM %s WHERE 1=1" % tablename
+        query = f"DELETE FROM {tablename} WHERE 1=1"
         params = []
 
         for key, value in filters.items():
-            query += " AND %s = ?" % key
+            query += f" AND {key} = ?"
             params.append(value)
 
         self.cursor.execute(query, params)
 
     def _add(self, tablename, data):
         # INSERT INTO <TABLENAME>(<col1>, <col2>..) VALUES(?,?..)
-        query = "INSERT INTO %s(" % tablename
+        query = f"INSERT INTO {tablename}("
         fields = []
         params = []
         for key, value in data.items():
@@ -187,8 +186,7 @@ class ChangelogData(object):
             params.append(value)
 
         values_substitute = len(fields)*["?"]
-        query += "%s) VALUES(%s)" % (",".join(fields),
-                                     ",".join(values_substitute))
+        query += f'{",".join(fields)}) VALUES({",".join(values_substitute)})'
         self.cursor.execute(query, params)
 
     def _update(self, tablename, data, filters):
@@ -196,14 +194,13 @@ class ChangelogData(object):
         params = []
         update_fields = []
         for key, value in data.items():
-            update_fields.append("%s = ?" % key)
+            update_fields.append(f"{key} = ?")
             params.append(value)
 
-        query = "UPDATE %s SET %s WHERE 1 = 1" % (tablename,
-                                                  ", ".join(update_fields))
+        query = f'UPDATE {tablename} SET {", ".join(update_fields)} WHERE 1 = 1'
 
         for key, value in filters.items():
-            query += " AND %s = ?" % key
+            query += f" AND {key} = ?"
             params.append(value)
 
         self.cursor.execute(query, params)
@@ -212,16 +209,16 @@ class ChangelogData(object):
         if not filters:
             return False
 
-        query = "SELECT COUNT(1) FROM %s WHERE 1=1" % tablename
+        query = f"SELECT COUNT(1) FROM {tablename} WHERE 1=1"
         params = []
 
         for key, value in filters.items():
-            query += " AND %s = ?" % key
+            query += f" AND {key} = ?"
             params.append(value)
 
         self.cursor.execute(query, params)
         row = self.cursor.fetchone()
-        return True if row[0] > 0 else False
+        return row[0] > 0
 
     def gfidpath_add(self, changelogfile, ty, gfid, pgfid1="", bn1="",
                      pgfid2="", bn2="", path1="", path2=""):

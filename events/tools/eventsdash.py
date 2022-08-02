@@ -38,10 +38,7 @@ def listen():
     if data is None:
         return "OK"
 
-    message = []
-    for k, v in data.get("message", {}).items():
-        message.append("{0}={1}".format(k, v))
-
+    message = ["{0}={1}".format(k, v) for k, v in data.get("message", {}).items()]
     print(("{0:20s} {1:20s} {2:36} {3}".format(
         human_time(data.get("ts")),
         data.get("event"),

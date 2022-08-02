@@ -41,10 +41,7 @@ def gf_event(event_type, **kwargs):
         return
 
     # Convert key value args into KEY1=VALUE1;KEY2=VALUE2;..
-    msg = ""
-    for k, v in kwargs.items():
-        msg += "{0}={1};".format(k, v)
-
+    msg = "".join("{0}={1};".format(k, v) for k, v in kwargs.items())
     # <TIMESTAMP> <EVENT_TYPE> <MSG>
     msg = "{0} {1} {2}".format(int(time.time()), event_type, msg.strip(";")).encode()
 

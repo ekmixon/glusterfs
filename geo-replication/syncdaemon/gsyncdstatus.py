@@ -132,9 +132,10 @@ class GeorepStatus(object):
         self.secondary_volume = slv_data[1].split(":")[0]  # Remove Secondary UUID
         self.work_dir = os.path.dirname(monitor_status_file)
         self.monitor_status_file = monitor_status_file
-        self.filename = os.path.join(self.work_dir,
-                                     "brick_%s.status"
-                                     % urllib.quote_plus(brick))
+        self.filename = os.path.join(
+            self.work_dir, f"brick_{urllib.quote_plus(brick)}.status"
+        )
+
 
         fd = os.open(self.filename, os.O_CREAT | os.O_RDWR)
         os.close(fd)
@@ -218,25 +219,28 @@ class GeorepStatus(object):
             # If checkpoint is not set or reset
             # or if last set checkpoint is changed
             if checkpoint_time == 0 or \
-               checkpoint_time != data["checkpoint_time"]:
+                   checkpoint_time != data["checkpoint_time"]:
                 data["checkpoint_time"] = 0
                 data["checkpoint_completion_time"] = 0
                 data["checkpoint_completed"] = "No"
 
             # If checkpoint is completed and not marked as completed
             # previously then update the checkpoint completed time
-            if checkpoint_time > 0 and checkpoint_time <= value[0]:
-                if data["checkpoint_completed"] == "No":
-                    curr_time = int(time.time())
-                    data["checkpoint_time"] = checkpoint_time
-                    data["checkpoint_completion_time"] = curr_time
-                    data["checkpoint_completed"] = "Yes"
-                    logging.info(lf("Checkpoint completed",
-                                    checkpoint_time=human_time_utc(
-                                        checkpoint_time),
-                                    completion_time=human_time_utc(curr_time)))
-                    self.trigger_gf_event_checkpoint_completion(
-                        checkpoint_time, curr_time)
+            if (
+                checkpoint_time > 0
+                and checkpoint_time <= value[0]
+                and data["checkpoint_completed"] == "No"
+            ):
+                curr_time = int(time.time())
+                data["checkpoint_time"] = checkpoint_time
+                data["checkpoint_completion_time"] = curr_time
+                data["checkpoint_completed"] = "Yes"
+                logging.info(lf("Checkpoint completed",
+                                checkpoint_time=human_time_utc(
+                                    checkpoint_time),
+                                completion_time=human_time_utc(curr_time)))
+                self.trigger_gf_event_checkpoint_completion(
+                    checkpoint_time, curr_time)
 
             return json.dumps(data)
 
@@ -269,8 +273,7 @@ class GeorepStatus(object):
     def dec_value(self, key, value):
         def merger(data):
             data[key] = data.get(key, 0) - value
-            if data[key] < 0:
-                data[key] = 0
+            data[key] = max(data[key], 0)
             return json.dumps(data)
 
         self._update(merger)
@@ -329,10 +332,7 @@ class GeorepStatus(object):
                 # not even started once
                 if e.errno == ENOENT:
                     monitor_status = "Stopped"
-                elif e.errno in (EACCES, EAGAIN):
-                    # cannot grab. so, monitor process still running..move on
-                    pass
-                else:
+                elif e.errno not in (EACCES, EAGAIN):
                     raise
 
         if monitor_status in ["Created", "Paused", "Stopped"]:
@@ -346,16 +346,15 @@ class GeorepStatus(object):
             data["checkpoint_completed"] = DEFAULT_STATUS
             data["checkpoint_time"] = DEFAULT_STATUS
             data["checkpoint_completion_time"] = DEFAULT_STATUS
-        else:
-            if checkpoint_time != data["checkpoint_time"]:
-                if checkpoint_time <= data["last_synced"]:
-                    data["checkpoint_completed"] = "Yes"
-                    data["checkpoint_time"] = checkpoint_time
-                    data["checkpoint_completion_time"] = data["last_synced"]
-                else:
-                    data["checkpoint_completed"] = "No"
-                    data["checkpoint_time"] = checkpoint_time
-                    data["checkpoint_completion_time"] = DEFAULT_STATUS
+        elif checkpoint_time != data["checkpoint_time"]:
+            if checkpoint_time <= data["last_synced"]:
+                data["checkpoint_completed"] = "Yes"
+                data["checkpoint_time"] = checkpoint_time
+                data["checkpoint_completion_time"] = data["last_synced"]
+            else:
+                data["checkpoint_completed"] = "No"
+                data["checkpoint_time"] = checkpoint_time
+                data["checkpoint_completion_time"] = DEFAULT_STATUS
 
         if data["checkpoint_time"] not in [0, DEFAULT_STATUS]:
             chkpt_time = data["checkpoint_time"]
@@ -408,12 +407,9 @@ class GeorepStatus(object):
     def print_status(self, checkpoint_time=0, json_output=False):
         status_out = self.get_status(checkpoint_time)
         if json_output:
-            out = {}
-            # Convert all values as string
-            for k, v in status_out.items():
-                out[k] = str(v)
+            out = {k: str(v) for k, v in status_out.items()}
             print(json.dumps(out))
             return
 
         for key, value in status_out.items():
-            print(("%s: %s" % (key, value)))
+            print(f"{key}: {value}")

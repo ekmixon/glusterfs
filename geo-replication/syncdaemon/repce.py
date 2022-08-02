@@ -59,10 +59,7 @@ def recv(inf):
     and is opened as text stream by default. Hence using the
     buffer attribute in python3
     """
-    if hasattr(inf, "buffer"):
-        return pickle.load(inf.buffer)
-    else:
-        return pickle.load(inf)
+    return pickle.load(inf.buffer) if hasattr(inf, "buffer") else pickle.load(inf)
 
 
 class RepceServer(object):
@@ -86,7 +83,7 @@ class RepceServer(object):
 
     def service_loop(self):
         """fire up worker threads, get messages and dispatch among them"""
-        for i in range(self.wnum):
+        for _ in range(self.wnum):
             t = Thread(target=self.worker)
             t.start()
         try:
@@ -192,7 +189,7 @@ class RepceClient(object):
                     raise res[1]
         rjob = RepceJob(cbk)
         self.jtab[rjob.rid] = rjob
-        logging.debug("call %s %s%s ..." % (repr(rjob), meth, repr(args)))
+        logging.debug(f"call {repr(rjob)} {meth}{repr(args)} ...")
         send(self.out, rjob.rid, meth, *args)
         return rjob
 
@@ -212,7 +209,7 @@ class RepceClient(object):
                              method=meth,
                              error=str(type(res).__name__)))
             raise res
-        logging.debug("call %s %s -> %s" % (repr(rjob), meth, repr(res)))
+        logging.debug(f"call {repr(rjob)} {meth} -> {repr(res)}")
         return res
 
     class mprx(object):

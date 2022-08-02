@@ -112,22 +112,22 @@ class GitBranchDiff:
                                                  %(os_path, path))
         return os_path
 
-    def check_pattern_exist (self):
+    def check_pattern_exist(self):
         " defend to check given branch[s] exit"
         status_sbr, op = commands.getstatusoutput('git log ' +
                                                   self.s_pattern)
         status_tbr, op = commands.getstatusoutput('git log ' +
                                                   self.t_pattern)
         if status_sbr != 0:
-            print("Error: --source=" + self.s_pattern + " doesn't exit\n")
+            print(f"Error: --source={self.s_pattern}" + " doesn't exit\n")
             self.parser.print_help()
             exit(status_sbr)
         elif status_tbr != 0:
-            print("Error: --target=" + self.t_pattern + " doesn't exit\n")
+            print(f"Error: --target={self.t_pattern}" + " doesn't exit\n")
             self.parser.print_help()
             exit(status_tbr)
 
-    def check_author_exist (self):
+    def check_author_exist(self):
         " defend to check given author exist, format in case of multiple"
         contrib_list = ['', '*', 'all', 'All', 'ALL', 'null', 'Null', 'NULL']
         if self.g_author in contrib_list:
@@ -135,7 +135,7 @@ class GitBranchDiff:
         else:
             ide_list = self.g_author.split(',')
             for ide in ide_list:
-                cmd4 = 'git log ' + self.s_pattern + ' --author=' + ide
+                cmd4 = f'git log {self.s_pattern} --author={ide}'
                 c_list = subprocess.check_output(cmd4, shell = True)
                 if len(c_list) is 0:
                     print("Error: --author=%s doesn't exit" %self.g_author)
@@ -211,20 +211,17 @@ class GitBranchDiff:
                                  action='append')
         self.argsdict = vars(self.parser.parse_args())
 
-    def print_output (self):
+    def print_output(self):
         " display the result list"
         print("\n------------------------------------------------------------\n")
-        print(self.tick + " Successfully Backported changes:")
+        print(f"{self.tick} Successfully Backported changes:")
         print('      {' + 'from: ' + self.s_pattern + \
-              '  to: '+ self.t_pattern + '}\n')
+                  '  to: '+ self.t_pattern + '}\n')
         for key, value in self.s_dict.items():
             if value in self.t_dict.itervalues():
-                print("[%s%s%s] %s" %(self.yello_set,
-                                      key,
-                                      self.color_unset,
-                                      value))
+                print(f"[{self.yello_set}{key}{self.color_unset}] {value}")
         print("\n------------------------------------------------------------\n")
-        print(self.cross + " Missing patches in " + self.t_pattern + ':\n')
+        print(f"{self.cross} Missing patches in {self.t_pattern}" + ':\n')
         if self.connected_to_gerrit():
             cmd3 = "git review -r origin -l"
             review_list = subprocess.check_output(cmd3, shell = True).split('\n')
@@ -234,48 +231,48 @@ class GitBranchDiff:
         for key, value in self.s_dict.items():
             if value not in self.t_dict.itervalues():
                 if any(value in s for s in review_list):
-                    print("[%s%s%s] %s %s(under review)%s" %(self.yello_set,
-                                                            key,
-                                                            self.color_unset,
-                                                            value,
-                                                            self.green_set,
-                                                            self.color_unset))
+                    print(
+                        f"[{self.yello_set}{key}{self.color_unset}] {value} {self.green_set}(under review){self.color_unset}"
+                    )
+
                 else:
-                    print("[%s%s%s] %s" %(self.yello_set,
-                                          key,
-                                          self.color_unset,
-                                          value))
+                    print(f"[{self.yello_set}{key}{self.color_unset}] {value}")
         print("\n------------------------------------------------------------\n")
 
-    def main (self):
+    def main(self):
         self.check_pattern_exist()
         self.check_author_exist()
 
         " actual git commands"
-        cmd1 = 'git log' + self.options + ' ' + self.s_pattern + \
-               ' --author=\'' + self.g_author + '\' ' + self.r_path
+        cmd1 = (
+            (
+                (f'git log{self.options} {self.s_pattern}' + ' --author=\'')
+                + self.g_author
+            )
+            + '\' '
+        ) + self.r_path
+
 
         " could be backported by anybody so --author doesn't apply here"
-        cmd2 = 'git log' + self.options + ' ' + self.t_pattern + \
-               ' ' + self.r_path
+        cmd2 = ((f'git log{self.options} {self.t_pattern}' + ' ') + self.r_path)
 
         s_list = subprocess.check_output(cmd1, shell = True).split('\n')
         t_list = subprocess.check_output(cmd2, shell = True)
 
         if len(t_list) is 0:
-            print("No commits in the target: %s" %self.t_pattern)
+            print(f"No commits in the target: {self.t_pattern}")
             print("see '%s --help'" %__file__)
             exit()
         else:
             t_list = t_list.split('\n')
 
-        self.s_dict = dict()
-        self.t_dict = dict()
+        self.s_dict = {}
+        self.t_dict = {}
 
         for item in s_list:
-            self.s_dict.update(dict([item.split(' ', 1)]))
+            self.s_dict |= dict([item.split(' ', 1)])
         for item in t_list:
-            self.t_dict.update(dict([item.split(' ', 1)]))
+            self.t_dict |= dict([item.split(' ', 1)])
 
         self.print_output()
 

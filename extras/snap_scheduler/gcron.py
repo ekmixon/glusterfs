@@ -42,7 +42,7 @@ def initLogger(script_name):
                                universal_newlines=True)
     out, err = process.communicate()
     if process.returncode == 0:
-        logfile = os.path.join(out.strip(), script_name[:-3]+".log")
+        logfile = os.path.join(out.strip(), f"{script_name[:-3]}.log")
 
     fh = logging.FileHandler(logfile)
     fh.setLevel(logging.DEBUG)
@@ -135,8 +135,7 @@ def main():
                 if errno != EEXIST:
                     log.error("Failed to create %s : %s",
                               GCRON_RELOAD_FLAG, e)
-                    output("Failed to create %s. Error: %s"
-                           % (GCRON_RELOAD_FLAG, e))
+                    output(f"Failed to create {GCRON_RELOAD_FLAG}. Error: {e}")
             return
 
         if not os.path.exists(GCRON_CROND_TASK):
@@ -183,7 +182,7 @@ def main():
 
     start_time = int(time.time())
 
-    doJob("Scheduled-" + jobname + "-" + volname, locking_file, takeSnap, volname)
+    doJob(f"Scheduled-{jobname}-{volname}", locking_file, takeSnap, volname)
 
 
 if __name__ == "__main__":

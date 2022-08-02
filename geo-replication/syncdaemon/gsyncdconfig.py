@@ -47,7 +47,7 @@ class Gconf(object):
         self.non_configurable_configs = []
         self.prev_mtime = 0
         if custom_conf_file is not None:
-            self.tmp_conf_file = custom_conf_file + ".tmp"
+            self.tmp_conf_file = f"{custom_conf_file}.tmp"
 
         self.session_conf_items = []
         self.args = args
@@ -58,10 +58,7 @@ class Gconf(object):
         self._load()
 
     def _tmpl_substitute(self):
-        tmpl_values = {}
-        for k, v in self.gconf.items():
-            tmpl_values[k.replace("-", "_")] = v
-
+        tmpl_values = {k.replace("-", "_"): v for k, v in self.gconf.items()}
         # override the config file values with the one user passed
         for k, v in self.args.items():
             # override the existing value only if set by user
@@ -72,14 +69,12 @@ class Gconf(object):
             tmpl_values[k] = v
 
         for k, v in self.gconf.items():
-            if k in self.template_conf and \
-               (isinstance(v, str) or isinstance(v, unicode)):
+            if k in self.template_conf and isinstance(v, (str, unicode)):
                 self.gconf[k] = Template(v).safe_substitute(tmpl_values)
 
     def _do_typecast(self):
         for k, v in self.gconf.items():
-            cast_func = globals().get(
-                "to_" + self.gconf_typecast.get(k, "string"), None)
+            cast_func = globals().get("to_" + self.gconf_typecast.get(k, "string"))
             if cast_func is not None:
                 self.gconf[k] = cast_func(v)
                 if self.default_values.get(k, None) is not None:
@@ -99,13 +94,7 @@ class Gconf(object):
             cnf.readfp(f)
 
             # Nothing to Reset, Not configured
-            if name != "all":
-                if not cnf.has_option("vars", name):
-                    return True
-
-                # Remove option from custom conf file
-                cnf.remove_option("vars", name)
-            else:
+            if name == "all":
                 # Remove and add empty section, do not disturb if config file
                 # already has any other section
                 try:
@@ -115,6 +104,12 @@ class Gconf(object):
 
                 cnf.add_section("vars")
 
+            elif not cnf.has_option("vars", name):
+                return True
+
+            else:
+                # Remove option from custom conf file
+                cnf.remove_option("vars", name)
         with open(self.tmp_conf_file, "w") as fw:
             cnf.write(fw)
 
@@ -206,14 +201,18 @@ class Gconf(object):
                 self.gconf_typecast[sect] = conf.get(sect, "type")
 
             # Prepare list of configurable conf
-            if conf.has_option(sect, "configurable"):
-                if conf.get(sect, "configurable").lower() == "false":
-                    self.non_configurable_configs.append(sect)
+            if (
+                conf.has_option(sect, "configurable")
+                and conf.get(sect, "configurable").lower() == "false"
+            ):
+                self.non_configurable_configs.append(sect)
 
             # if it is a template conf value which needs to be substituted
-            if conf.has_option(sect, "template"):
-                if conf.get(sect, "template").lower().strip() == "true":
-                    self.template_conf.append(sect)
+            if (
+                conf.has_option(sect, "template")
+                and conf.get(sect, "template").lower().strip() == "true"
+            ):
+                self.template_conf.append(sect)
 
             # Set default values
             if conf.has_option(sect, "value"):
@@ -245,10 +244,9 @@ class Gconf(object):
                 self._load()
 
     def get(self, name, default_value=None, with_lock=True):
-        if with_lock:
-            with self.lock:
-                return self.gconf.get(name, default_value)
-        else:
+        if not with_lock:
+            return self.gconf.get(name, default_value)
+        with self.lock:
             return self.gconf.get(name, default_value)
 
     def getall(self, show_defaults=False, show_non_configurable=False):
@@ -261,31 +259,27 @@ class Gconf(object):
                         "value": self.get(k),
                         "default": dv,
                         "configurable": True,
-                        "modified": False if dv == "" else True
+                        "modified": dv != "",
                     }
+
             return cnf
 
         # Show all configs including defaults
         for k, v in self.gconf.items():
-            configurable = False if k in self.non_configurable_configs \
-                           else True
+            configurable = k not in self.non_configurable_configs
             dv = self.default_values.get(k, "")
-            modified = False if dv == "" else True
-            if show_non_configurable:
+            if (
+                not show_non_configurable
+                and k not in self.non_configurable_configs
+                or show_non_configurable
+            ):
+                modified = dv != ""
                 cnf[k] = {
                     "value": v,
                     "default": dv,
                     "configurable": configurable,
                     "modified": modified
                 }
-            else:
-                if k not in self.non_configurable_configs:
-                    cnf[k] = {
-                        "value": v,
-                        "default": dv,
-                        "configurable": configurable,
-                        "modified": modified
-                    }
 
         return cnf
 
@@ -299,10 +293,7 @@ class Gconf(object):
 
     def _is_configurable(self, name):
         item = self.gconfdata.get(name, None)
-        if item is None:
-            return False
-
-        return item.get("configurable", True)
+        return False if item is None else item.get("configurable", True)
 
     def _is_valid_value(self, name, value):
         item = self.gconfdata.get(name, None)
@@ -329,10 +320,7 @@ class Gconf(object):
         if item["validation"] == "unixtime":
             return validate_unixtime(value)
 
-        if item["validation"] == "int":
-            return validate_int(value)
-
-        return False
+        return validate_int(value) if item["validation"] == "int" else False
 
     def _is_config_changed(self):
         if self.custom_conf_file is not None and \
@@ -347,7 +335,7 @@ class Gconf(object):
 def is_config_file_old(config_file, primaryvol, secondaryvol):
     cnf = RawConfigParser()
     cnf.read(config_file)
-    session_section = "peers %s %s" % (primaryvol, secondaryvol)
+    session_section = f"peers {primaryvol} {secondaryvol}"
     try:
         return dict(cnf.items(session_section))
     except NoSectionError:
@@ -367,15 +355,11 @@ def config_upgrade(config_file, ret):
         #handle option name changes
         if key == "use_tarssh":
             new_key = "sync-method"
-            if value == "true":
-                new_value = "tarssh"
-            else:
-                new_value = "rsync"
+            new_value = "tarssh" if value == "true" else "rsync"
             config.set('vars', new_key, new_value)
         elif key == "timeout":
             new_key = "secondary-timeout"
             config.set('vars', new_key, value)
-        #for changes like: ignore_deletes to ignore-deletes
         else:
             new_key = key.replace("_", "-")
             config.set('vars', new_key, value)
@@ -395,10 +379,7 @@ def validate_int(value):
 def validate_unixtime(value):
     try:
         y = datetime.fromtimestamp(int(value)).strftime("%Y")
-        if y == "1970":
-            return False
-
-        return True
+        return y != "1970"
     except ValueError:
         return False
 
@@ -445,9 +426,7 @@ def to_float(value):
 
 
 def to_bool(value):
-    if isinstance(value, bool):
-        return value
-    return True if value in ["true", "True"] else False
+    return value if isinstance(value, bool) else value in ["true", "True"]
 
 
 def get(name, default_value=None):

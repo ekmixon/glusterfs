@@ -44,15 +44,17 @@ def mode_cleanup(args):
     try:
         shutil.rmtree(working_dir, onerror=handle_rm_error)
     except (OSError, IOError) as e:
-        logger.error("Failed to delete working directory: %s" % e)
+        logger.error(f"Failed to delete working directory: {e}")
         sys.exit(1)
 
 
 def mode_create(args):
     session_dir = os.path.join(conf.get_opt("session_dir"),
                                args.session)
-    status_file = os.path.join(session_dir, args.volume,
-                     "%s.status" % urllib.quote_plus(args.brick))
+    status_file = os.path.join(
+        session_dir, args.volume, f"{urllib.quote_plus(args.brick)}.status"
+    )
+
 
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
            logger=logger)
@@ -66,12 +68,14 @@ def mode_create(args):
 
 def mode_post(args):
     session_dir = os.path.join(conf.get_opt("session_dir"), args.session)
-    status_file = os.path.join(session_dir, args.volume,
-                     "%s.status" % urllib.quote_plus(args.brick))
+    status_file = os.path.join(
+        session_dir, args.volume, f"{urllib.quote_plus(args.brick)}.status"
+    )
+
 
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
            logger=logger)
-    status_file_pre = status_file + ".pre"
+    status_file_pre = f"{status_file}.pre"
 
     if os.path.exists(status_file_pre):
         os.rename(status_file_pre, status_file)
@@ -90,8 +94,8 @@ def mode_delete(args):
     try:
         os.rmdir(session_dir)
     except OSError as e:
-        if not e.errno == ENOTEMPTY:
-            logger.warn("Failed to delete session directory: %s" % e)
+        if e.errno != ENOTEMPTY:
+            logger.warn(f"Failed to delete session directory: {e}")
 
 
 def _get_args():
@@ -136,4 +140,4 @@ if __name__ == "__main__":
 
     # globals() will have all the functions already defined.
     # mode_<args.mode> will be the function name to be called
-    globals()["mode_" + args.mode](args)
+    globals()[f"mode_{args.mode}"](args)

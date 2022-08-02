@@ -7,10 +7,7 @@ from optparse import OptionParser
 import xattr
 
 def handle_textencoding(attr):
-    ### required for Python's handling of NULL strings.
-    attr_null_replace = (attr.encode('hex').decode('hex')).replace('\x00',
-                                                                   '\\000')
-    return attr_null_replace
+    return (attr.encode('hex').decode('hex')).replace('\x00', '\\000')
 
 def getfattr(path, option):
     attr = xattr.getxattr(path, option.name)
@@ -29,12 +26,12 @@ def getfattr(path, option):
     print_getfattr (path, option, encoded_attr)
     return
 
-def print_getfattr (path, option, encoded_attr=None):
+def print_getfattr(path, option, encoded_attr=None):
     if encoded_attr:
         if option.encoding == "hex":
-            print(("%s=0x%s" % (option.name, encoded_attr)))
+            print(f"{option.name}=0x{encoded_attr}")
         elif option.encoding == "base64":
-            print(("%s=0s%s" % (option.name, encoded_attr)))
+            print(f"{option.name}=0s{encoded_attr}")
         else:
             print(("%s=\"%s\"" % (option.name, encoded_attr)))
     else:
@@ -42,12 +39,12 @@ def print_getfattr (path, option, encoded_attr=None):
 
     return
 
-def print_header (path, absnames):
+def print_header(path, absnames):
     if absnames:
-        print(("# file: %s" % path))
+        print(f"# file: {path}")
     else:
         print ("getfattr: Removing leading '/' from absolute path names")
-        print(("# file: %s" % path[1:]))
+        print(f"# file: {path[1:]}")
 
 if __name__ == '__main__':
     usage = "usage: %prog [-n name|-d] [-e en] [-m pattern] path...."
@@ -95,13 +92,14 @@ if __name__ == '__main__':
         print ("-m and -n are mutually exclusive...")
         sys.exit(1)
 
-    if option.encoding:
-        if (not (option.encoding.strip() == "hex" or
-                 option.encoding.strip() == "base64" or
-                 option.encoding.strip() == "text")):
-            print(("unrecognized encoding parameter... %s, please use"
-                   " `text`, `base64` or `hex`" % option.encoding))
-            sys.exit(1)
+    if option.encoding and option.encoding.strip() not in [
+        "hex",
+        "base64",
+        "text",
+    ]:
+        print(("unrecognized encoding parameter... %s, please use"
+               " `text`, `base64` or `hex`" % option.encoding))
+        sys.exit(1)
 
     args[0] = os.path.abspath(args[0])
 
@@ -110,7 +108,7 @@ if __name__ == '__main__':
         try:
             getfattr(args[0], option)
         except KeyError as err:
-            print(("Invalid key %s" % err))
+            print(f"Invalid key {err}")
             sys.exit(1)
         except IOError as err:
             print (err)

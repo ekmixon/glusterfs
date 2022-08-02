@@ -32,7 +32,7 @@ logger = logging.getLogger()
 
 def brickfind_crawl(brick, args):
     if brick.endswith("/"):
-        brick = brick[0:len(brick)-1]
+        brick = brick[:-1]
 
     working_dir = os.path.dirname(args.outfile)
     mkdirp(working_dir, exit_on_err=True, logger=logger)
@@ -97,9 +97,11 @@ def _get_args():
 if __name__ == "__main__":
     args = _get_args()
     session_dir = os.path.join(conf.get_opt("session_dir"), args.session)
-    status_file = os.path.join(session_dir, args.volume,
-                     "%s.status" % urllib.quote_plus(args.brick))
-    status_file_pre = status_file + ".pre"
+    status_file = os.path.join(
+        session_dir, args.volume, f"{urllib.quote_plus(args.brick)}.status"
+    )
+
+    status_file_pre = f"{status_file}.pre"
     mkdirp(os.path.join(session_dir, args.volume), exit_on_err=True,
            logger=logger)
     mkdirp(os.path.join(conf.get_opt("log_dir"), args.session, args.volume),

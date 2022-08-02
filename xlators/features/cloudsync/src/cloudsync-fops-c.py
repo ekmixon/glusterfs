@@ -315,7 +315,7 @@ def gen_defaults():
             print(generate(LOC_STAT_OP_FOP_CBK_TEMPLATE, name, cbk_subs))
             print(generate(LOC_STAT_OP_FOP_TEMPLATE, name, fop_subs))
 
-for l in open(sys.argv[1], 'r').readlines():
+for l in open(sys.argv[1], 'r'):
     if l.find('#pragma generate') != -1:
         print("/* BEGIN GENERATED CODE - DO NOT MODIFY */")
         gen_defaults()

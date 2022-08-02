@@ -31,11 +31,9 @@ def get_quota_xattr_brick():
         if re.search("# file:", k):
             print(xdict)
             filename=k
-            print("=====" + filename + "=======")
+            print(f"====={filename}=======")
             xdict = {}
-        elif k is "":
-            pass
-        else:
+        elif k is not "":
             print(xattr)
             v = xattr.split("=")[1]
             if re.search("contri", k):

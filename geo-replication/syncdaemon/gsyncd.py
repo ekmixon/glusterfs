@@ -27,7 +27,7 @@ from syncdutils import (set_term_handler, finalize, lf,
 import argsupgrade
 
 
-GSYNCD_VERSION = "gsyncd.py %s.0" % GCONF_VERSION
+GSYNCD_VERSION = f"gsyncd.py {GCONF_VERSION}.0"
 
 
 def main():
@@ -194,9 +194,7 @@ def main():
         hostdata, secondaryvol = args.secondary.split("::")
         hostdata = hostdata.split("@")
         secondaryhost = hostdata[-1]
-        secondaryuser = "root"
-        if len(hostdata) == 2:
-            secondaryuser = hostdata[0]
+        secondaryuser = hostdata[0] if len(hostdata) == 2 else "root"
         extra_tmpl_args["primary_secondary_host"] = secondaryhost
         extra_tmpl_args["secondaryuser"] = secondaryuser
         extra_tmpl_args["secondaryvol"] = secondaryvol
@@ -218,11 +216,8 @@ def main():
     # primary and Secondary arguments.
     if config_file is None and hasattr(args, "config_file") \
         and args.subcmd != "secondary":
-        config_file = "%s/geo-replication/%s_%s_%s/gsyncd.conf" % (
-            GLUSTERD_WORKDIR,
-            args.primary,
-            extra_tmpl_args["primary_secondary_host"],
-            extra_tmpl_args["secondaryvol"])
+        config_file = f'{GLUSTERD_WORKDIR}/geo-replication/{args.primary}_{extra_tmpl_args["primary_secondary_host"]}_{extra_tmpl_args["secondaryvol"]}/gsyncd.conf'
+
 
     # If Config file path not exists, log error and continue using default conf
     config_file_error_msg = None
@@ -236,11 +231,7 @@ def main():
 
     rconf.config_file = config_file
 
-    # Override gconf values from argument values only if it is secondary gsyncd
-    override_from_args = False
-    if args.subcmd == "secondary":
-        override_from_args = True
-
+    override_from_args = args.subcmd == "secondary"
     if config_file is not None and \
        args.subcmd in ["monitor", "config-get", "config-set", "config-reset"]:
         ret = gconf.is_config_file_old(config_file, args.primary, extra_tmpl_args["secondaryvol"])
@@ -248,20 +239,23 @@ def main():
            gconf.config_upgrade(config_file, ret)
 
     # Load Config file
-    gconf.load(GLUSTERFS_CONFDIR + "/gsyncd.conf",
-               config_file,
-               vars(args),
-               extra_tmpl_args,
-               override_from_args)
+    gconf.load(
+        f"{GLUSTERFS_CONFDIR}/gsyncd.conf",
+        config_file,
+        vars(args),
+        extra_tmpl_args,
+        override_from_args,
+    )
+
 
     # Default label to print in log file
     label = args.subcmd
     if args.subcmd in ("worker"):
         # If Worker, then add brick path also to label
-        label = "%s %s" % (args.subcmd, args.local_path)
+        label = f"{args.subcmd} {args.local_path}"
     elif args.subcmd == "secondary":
         # If Secondary add Primary node and Brick details
-        label = "%s %s%s" % (args.subcmd, args.primary_node, args.primary_brick)
+        label = f"{args.subcmd} {args.primary_node}{args.primary_brick}"
 
     # Setup Logger
     # Default log file
@@ -311,12 +305,11 @@ def main():
     func = getattr(subcmds, "subcmd_" + args.subcmd.replace("-", "_"), None)
 
     try:
-        try:
-            if func is not None:
-                rconf.args = args
-                func(args)
-        except:
-            log_raise_exception(excont)
+        if func is not None:
+            rconf.args = args
+            func(args)
+    except:
+        log_raise_exception(excont)
     finally:
         finalize(exval=excont.exval)
 

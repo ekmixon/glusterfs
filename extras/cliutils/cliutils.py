@@ -94,11 +94,15 @@ def get_pool_list():
 
     pool = []
     try:
-        for p in tree.findall('peerStatus/peer'):
-            pool.append({"nodeid": p.find("uuid").text,
-                         "hostname": p.find("hostname").text,
-                         "connected": (True if p.find("connected").text == "1"
-                                       else False)})
+        pool.extend(
+            {
+                "nodeid": p.find("uuid").text,
+                "hostname": p.find("hostname").text,
+                "connected": p.find("connected").text == "1",
+            }
+            for p in tree.findall('peerStatus/peer')
+        )
+
     except (ParseError, AttributeError, ValueError) as e:
         output_error("Failed to parse Pool Info: {0}".format(e))
 
@@ -152,7 +156,7 @@ def execute_in_peers(name, args=[]):
     # Iterate pool_list and merge all_nodes_data collected above
     # If a peer node is down then set node_up = False
     for p in pool_list:
-        p_data = all_nodes_data.get(p.get("nodeid"), None)
+        p_data = all_nodes_data.get(p.get("nodeid"))
         row_data = NodeOutput(node_up=False,
                               hostname=p.get("hostname"),
                               nodeid=p.get("nodeid"),
@@ -198,7 +202,7 @@ def runcli():
     metavar_data = []
     for c in Cmd.__subclasses__():
         cls = c()
-        if getattr(cls, "name", "") == "":
+        if not getattr(cls, "name", ""):
             raise NotImplementedError("\"name\" is not added "
                                       "to \"{0}\"".format(
                                           cls.__class__.__name__))

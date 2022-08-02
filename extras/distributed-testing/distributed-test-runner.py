@@ -42,7 +42,7 @@ def socket_instance(address_family):
 
 
 def patch_file():
-    return "/tmp/%s-patch.tar.gz" % PATCH_FILE_UID
+    return f"/tmp/{PATCH_FILE_UID}-patch.tar.gz"
 
 # ..............................................................................
 # SimpleXMLRPCServer IPvX Wrapper
@@ -162,13 +162,13 @@ class Shell:
     def __init__(self, cwd=None, logpath=None):
         self.cwd = cwd
         self.shell = True
-        self.redirect = open(os.devnull if not logpath else logpath, "wr+")
+        self.redirect = open(logpath or os.devnull, "wr+")
 
     def __del__(self):
         self.redirect.close()
 
     def cd(self, cwd):
-        Log.debug("cd %s" % cwd)
+        Log.debug(f"cd {cwd}")
         self.cwd = cwd
 
     def truncate(self):
@@ -179,37 +179,32 @@ class Shell:
         return self.redirect.read()
 
     def check_call(self, cmd):
-        status = self.call(cmd)
-        if status:
-            raise Exception("Error running command %s. status=%s"
-                            % (cmd, status))
+        if status := self.call(cmd):
+            raise Exception(f"Error running command {cmd}. status={status}")
 
     def call(self, cmd):
-        if isinstance(cmd, list):
-            return self._calls(cmd)
-
-        return self._call(cmd)
+        return self._calls(cmd) if isinstance(cmd, list) else self._call(cmd)
 
     def ssh(self, hostname, cmd, id_rsa=None):
-        flags = "" if not id_rsa else "-i " + id_rsa
+        flags = f"-i {id_rsa}" if id_rsa else ""
         return self.call("timeout %s ssh %s root@%s \"%s\"" %
                             (SSH_TIMEOUT_S, flags, hostname, cmd))
 
     def scp(self, hostname, src, dest, id_rsa=None):
-        flags = "" if not id_rsa else "-i " + id_rsa
-        return self.call("timeout %s scp %s %s root@%s:%s" %
-                            (SSH_TIMEOUT_S, flags, src, hostname, dest))
+        flags = f"-i {id_rsa}" if id_rsa else ""
+        return self.call(
+            f"timeout {SSH_TIMEOUT_S} scp {flags} {src} root@{hostname}:{dest}"
+        )
 
     def output(self, cmd, cwd=None):
-        Log.debug("%s> %s" % (cwd, cmd))
+        Log.debug(f"{cwd}> {cmd}")
         return subprocess.check_output(shlex.split(cmd), cwd=self.cwd)
 
     def _calls(self, cmds):
-        Log.debug("Running commands. %s" % cmds)
+        Log.debug(f"Running commands. {cmds}")
         for c in cmds:
-            status = self.call(c)
-            if status:
-                Log.error("Commands failed with %s" % status)
+            if status := self.call(c):
+                Log.error(f"Commands failed with {status}")
                 return status
         return 0
 
@@ -217,12 +212,12 @@ class Shell:
         if not self.shell:
             cmd = shlex.split(cmd)
 
-        Log.debug("%s> %s" % (self.cwd, cmd))
+        Log.debug(f"{self.cwd}> {cmd}")
 
         status = subprocess.call(cmd, cwd=self.cwd, shell=self.shell,
                                  stdout=self.redirect, stderr=self.redirect)
 
-        Log.debug("return %s" % status)
+        Log.debug(f"return {status}")
         return status
 
 
@@ -238,7 +233,7 @@ class TestServer:
         self.rpc = None
         self.pidf = None
 
-        self.shell.check_call("mkdir -p %s" % self.scratchdir)
+        self.shell.check_call(f"mkdir -p {self.scratchdir}")
         self._process_lock()
 
     def __del__(self):
@@ -246,7 +241,7 @@ class TestServer:
             self.pidf.close()
 
     def init(self):
-        Log.debug("Starting xmlrpc server on port %s" % self.port)
+        Log.debug(f"Starting xmlrpc server on port {self.port}")
         self.rpc = GeneralXMLRPCServer(("", self.port))
         self.rpc.register_instance(Handlers(self.scratchdir))
 
@@ -256,12 +251,12 @@ class TestServer:
 
     def _process_lock(self):
         pid_filename = os.path.basename(__file__).replace("/", "-")
-        pid_filepath = "%s/%s.pid" % (self.scratchdir, pid_filename)
+        pid_filepath = f"{self.scratchdir}/{pid_filename}.pid"
         self.pidf = open(pid_filepath, "w")
         try:
             fcntl.lockf(self.pidf, fcntl.LOCK_EX | fcntl.LOCK_NB)
             # We have the lock, kick anybody listening on this port
-            self.shell.call("kill $(lsof -t -i:%s)" % self.port)
+            self.shell.call(f"kill $(lsof -t -i:{self.port})")
         except IOError:
             Log.error("Another process instance is running")
             sys.exit(0)
@@ -298,8 +293,8 @@ class Handlers:
     def __init__(self, scratchdir):
         self.client_id = None
         self.scratchdir = scratchdir
-        self.gluster_root = "%s/glusterfs" % self.scratchdir
-        self.shell = Shell(logpath="%s/test-handlers.log" % self.scratchdir)
+        self.gluster_root = f"{self.scratchdir}/glusterfs"
+        self.shell = Shell(logpath=f"{self.scratchdir}/test-handlers.log")
 
     def hello(self, id):
         if not handler_lock.acquire(False):
@@ -311,7 +306,7 @@ class Handlers:
 
     def _hello_locked(self, id):
         if handler_serving_since.elapsed_s() > CLIENT_TIMEOUT_S:
-            Log.debug("Disconnected client %s" % self.client_id)
+            Log.debug(f"Disconnected client {self.client_id}")
             self.client_id = None
 
         if not self.client_id:
@@ -323,9 +318,7 @@ class Handlers:
 
     @synchronized
     def ping(self, id=None):
-        if id:
-            return id == self.client_id
-        return True
+        return id == self.client_id if id else True
 
     @synchronized
     def bye(self, id):
@@ -343,28 +336,25 @@ class Handlers:
 
     @synchronized
     def copy(self, id, name, content):
-        with open("%s/%s" % (self.scratchdir, name), "w+") as f:
+        with open(f"{self.scratchdir}/{name}", "w+") as f:
             f.write(decode(content))
         return True
 
     @synchronized
     def copygzip(self, id, content):
         assert id == self.client_id
-        gzipfile = "%s/tmp.tar.gz" % self.scratchdir
-        tarfile = "%s/tmp.tar" % self.scratchdir
-        self.shell.check_call("rm -f %s" % gzipfile)
-        self.shell.check_call("rm -f %s" % tarfile)
+        gzipfile = f"{self.scratchdir}/tmp.tar.gz"
+        tarfile = f"{self.scratchdir}/tmp.tar"
+        self.shell.check_call(f"rm -f {gzipfile}")
+        self.shell.check_call(f"rm -f {tarfile}")
         write_to_file(gzipfile, decode(content))
 
         self.shell.cd(self.scratchdir)
-        self.shell.check_call("rm -r -f %s" % self.gluster_root)
-        self.shell.check_call("mkdir -p %s" % self.gluster_root)
+        self.shell.check_call(f"rm -r -f {self.gluster_root}")
+        self.shell.check_call(f"mkdir -p {self.gluster_root}")
 
         self.shell.cd(self.gluster_root)
-        cmds = [
-            "gunzip -f -q %s" % gzipfile,
-            "tar -xvf %s" % tarfile
-        ]
+        cmds = [f"gunzip -f -q {gzipfile}", f"tar -xvf {tarfile}"]
         return self.shell.call(cmds) == 0
 
     @synchronized
@@ -373,8 +363,12 @@ class Handlers:
         self.shell.cd(self.gluster_root)
         self.shell.call("make clean")
         env = "ASAN_ENABLED=1" if asan else ""
-        return self.shell.call(
-		"%s ./extras/distributed-testing/distributed-test-build.sh" % env) == 0
+        return (
+            self.shell.call(
+                f"{env} ./extras/distributed-testing/distributed-test-build.sh"
+            )
+            == 0
+        )
 
     @synchronized
     def install(self, id):
@@ -387,25 +381,20 @@ class Handlers:
         assert id == self.client_id
         self.shell.cd(self.gluster_root)
         env = "DEBUG=1 "
-        if valgrind == "memcheck" or valgrind == "yes":
-            cmd = "valgrind"
-            cmd += " --tool=memcheck --leak-check=full --track-origins=yes"
+        if valgrind in ["memcheck", "yes"]:
+            cmd = "valgrind" + " --tool=memcheck --leak-check=full --track-origins=yes"
             cmd += " --show-leak-kinds=all -v prove -v"
         elif valgrind == "drd":
-            cmd = "valgrind"
-            cmd += " --tool=drd -v prove -v"
+            cmd = "valgrind" + " --tool=drd -v prove -v"
         elif asan_noleaks:
             cmd = "prove -v"
             env += "ASAN_OPTIONS=detect_leaks=0 "
         else:
             cmd = "prove -v"
 
-        status = self.shell.call(
-		"%s timeout %s %s %s" % (env, timeout, cmd, test))
+        status = self.shell.call(f"{env} timeout {timeout} {cmd} {test}")
 
-        if status != 0:
-            return (False, self._log_content())
-        return (True, "")
+        return (False, self._log_content()) if status != 0 else (True, "")
 
     def _log_content(self):
         return encode(self.shell.read_logs())
@@ -425,14 +414,14 @@ class RPCConnection((threading.Thread)):
         self.cb = cb
         self.stop = False
         self.proxy = None
-        self.logid = "%s:%s" % (self.host, self.port)
+        self.logid = f"{self.host}:{self.port}"
 
     def connect(self):
         (status, ret) = failsafe(self._connect)
         return (status and ret)
 
     def _connect(self):
-        url = "http://%s:%s" % (self.host, self.port)
+        url = f"http://{self.host}:{self.port}"
         self.proxy = xmlrpclib.ServerProxy(url, transport=IPTransport())
         return self.proxy.hello(self.cb.id)
 
@@ -462,7 +451,7 @@ class RPCConnection((threading.Thread)):
             time.sleep(0)
 
         failsafe(self.proxy.bye, (self.cb.id,))
-        Log.debug("%s connection thread stopped" % self.host)
+        Log.debug(f"{self.host} connection thread stopped")
 
     def _run(self):
         test = self.cb.next_test()
@@ -487,7 +476,7 @@ class RPCConnection((threading.Thread)):
             self.cb.note_error(test, error)
 
     def _compile_and_install(self):
-        Log.debug("<%s> Build " % self.logid)
+        Log.debug(f"<{self.logid}> Build ")
         asan = self.cb.asan or self.cb.asan_noleaks
         return (self.proxy.build(self.cb.id, asan) and
                 self.proxy.install(self.cb.id))
@@ -496,10 +485,9 @@ class RPCConnection((threading.Thread)):
         return self._copy_gzip()
 
     def _copy_gzip(self):
-        Log.cli("<%s> copying and compiling %s to remote" %
-                 (self.logid, self.path))
+        Log.cli(f"<{self.logid}> copying and compiling {self.path} to remote")
         data = encode(get_file_content(patch_file()))
-        Log.debug("GZIP size = %s B" % len(data))
+        Log.debug(f"GZIP size = {len(data)} B")
         return self.proxy.copygzip(self.cb.id, data)
 
 
@@ -509,7 +497,7 @@ class RPCConnectionPool:
         self.hosts = hosts
         self.conns = []
         self.faulty = []
-        self.n = int(len(hosts) / 2) + 1 if not n else n
+        self.n = n or len(hosts) // 2 + 1
         self.id_rsa = id_rsa
         self.stop = False
         self.scanner = threading.Thread(target=self._scan_hosts_loop)
@@ -517,19 +505,18 @@ class RPCConnectionPool:
         self.shell = Shell()
         self.since_start = Timer()
 
-        self.shell.check_call("rm -f %s" % patch_file())
-        self.shell.check_call("tar -zcvf %s ." % patch_file())
+        self.shell.check_call(f"rm -f {patch_file()}")
+        self.shell.check_call(f"tar -zcvf {patch_file()} .")
         self.id = md5.new(get_file_content(patch_file())).hexdigest()
-        Log.cli("client UID %s" % self.id)
-        Log.cli("patch UID %s" % PATCH_FILE_UID)
+        Log.cli(f"client UID {self.id}")
+        Log.cli(f"patch UID {PATCH_FILE_UID}")
 
     def __del__(self):
-        self.shell.check_call("rm -f %s" % patch_file())
+        self.shell.check_call(f"rm -f {patch_file()}")
 
     def pool_status(self):
         elapsed_m = int(self.since_start.elapsed_s() / 60)
-        return "%s/%s connected, %smin elapsed" % (len(self.conns), self.n,
-                                                   elapsed_m)
+        return f"{len(self.conns)}/{self.n} connected, {elapsed_m}min elapsed"
 
     def connect(self):
         Log.debug("Starting scanner")
@@ -542,12 +529,12 @@ class RPCConnectionPool:
             conn.disconnect()
 
     def note_lost_connection(self, conn):
-        Log.cli("lost connection to %s" % conn.host)
+        Log.cli(f"lost connection to {conn.host}")
         self.conns.remove(conn)
         self.hosts.append((conn.host, conn.port))
 
     def note_setup_failed(self, conn):
-        Log.error("Setup failed on %s:%s" % (conn.host, conn.port))
+        Log.error(f"Setup failed on {conn.host}:{conn.port}")
         self.conns.remove(conn)
         self.faulty.append((conn.host, conn.port))
 
@@ -568,17 +555,17 @@ class RPCConnectionPool:
             self._scan_host(host, port)
 
     def _scan_host(self, host, port):
-        Log.debug("scanning %s:%s" % (host, port))
+        Log.debug(f"scanning {host}:{port}")
         c = RPCConnection(host, port, self.gluster_path, self)
         (status, result) = failsafe(c.connect)
         if status and result:
             self.hosts.remove((host, port))
-            Log.debug("Connected to %s:%s" % (host, port))
+            Log.debug(f"Connected to {host}:{port}")
             self.conns.append(c)
             c.start()
-            Log.debug("%s / %s connected" % (len(self.conns), self.n))
+            Log.debug(f"{len(self.conns)} / {self.n} connected")
         else:
-            Log.debug("Failed to connect to %s:%s" % (host, port))
+            Log.debug(f"Failed to connect to {host}:{port}")
 
     def _kick_hosts_loop(self):
         Log.debug("Kick thread started")
@@ -610,14 +597,13 @@ class RPCConnectionPool:
                 Log.debug("Host=%s is alive. Won't kick" % host)
                 continue
 
-            Log.debug("Kicking %s" % host)
+            Log.debug(f"Kicking {host}")
             mypath = sys.argv[0]
             myname = os.path.basename(mypath)
-            destpath = "/tmp/%s" % myname
+            destpath = f"/tmp/{myname}"
             sh = Shell()
             sh.scp(host, mypath, destpath, self.id_rsa)
-            sh.ssh(host, "nohup %s --server &>> %s.log &" %
-                         (destpath, destpath), self.id_rsa)
+            sh.ssh(host, f"nohup {destpath} --server &>> {destpath}.log &", self.id_rsa)
 
     def join(self):
         self.scanner.join()
@@ -649,7 +635,7 @@ class TestRunner(RPCConnectionPool):
 
         self.tests = self._get_tests(tests)
 
-        Log.debug("tests: %s" % self.tests)
+        Log.debug(f"tests: {self.tests}")
 
     def _get_tests(self, tests):
         if not tests or tests == "all":
@@ -668,14 +654,14 @@ class TestRunner(RPCConnectionPool):
         if isinstance(data, list):
             str = ""
             for i in data:
-                str = "%s %s" % (str, i)
+                str = f"{str} {i}"
             return str
-        return "%s" % data
+        return f"{data}"
 
     def print_result(self):
         Log.cli("== RESULTS ==")
-        Log.cli("SUCCESS  : %s" % len(self.done))
-        Log.cli("ERRORS   : %s" % len(self.error))
+        Log.cli(f"SUCCESS  : {len(self.done)}")
+        Log.cli(f"ERRORS   : {len(self.error)}")
         Log.cli("== ERRORS ==")
         Log.cli(self._pretty_print(self.error))
         Log.cli("== LOGS ==")
@@ -697,7 +683,7 @@ class TestRunner(RPCConnectionPool):
         total = len(self.tests) + len(self.pending) + len(self.done)
         total += len(self.error)
         completed = len(self.done) + len(self.error)
-        return 0 if not total else int(completed / total * 100)
+        return int(completed / total * 100) if total else 0
 
     def note_done(self, test):
         Log.cli("%s PASS (%s%% done) (%s)" % (test, self._pct_completed(),
@@ -708,28 +694,27 @@ class TestRunner(RPCConnectionPool):
             del self.retry[test]
 
     def note_error(self, test, errstr):
-        Log.cli("%s FAIL" % test)
+        Log.cli(f"{test} FAIL")
         self.pending.remove(test)
         if test not in self.retry:
             self.retry[test] = 1
 
         if errstr:
-            path = "%s/%s-%s.log" % ("/tmp", test.replace("/", "-"),
-                                     self.retry[test])
+            path = f'/tmp/{test.replace("/", "-")}-{self.retry[test]}.log'
             failsafe(write_to_file, (path, decode(errstr),))
             self.error_logs.append(path)
 
         if self.retry[test] < MAX_ATTEMPTS:
             self.retry[test] += 1
-            Log.debug("retry test %s attempt %s" % (test, self.retry[test]))
+            Log.debug(f"retry test {test} attempt {self.retry[test]}")
             self.tests.append(test)
         else:
-            Log.debug("giveup attempt test %s" % test)
+            Log.debug(f"giveup attempt test {test}")
             del self.retry[test]
             self.error.append(test)
 
     def note_retry(self, test):
-        Log.cli("retry %s on another host" % test)
+        Log.cli(f"retry {test} on another host")
         self.pending.remove(test)
         self.tests.append(test)
 
@@ -748,22 +733,19 @@ class TestRunner(RPCConnectionPool):
     def _list_tests(self, prefixes, recursive=False, ignore_ifnotexist=False):
         tests = []
         for prefix in prefixes:
-            real_path = "%s/%s" % (self.gluster_path, prefix)
+            real_path = f"{self.gluster_path}/{prefix}"
             if not os.path.exists(real_path) and ignore_ifnotexist:
                 continue
             for f in os.listdir(real_path):
-                if os.path.isdir(real_path + "/" + f):
+                if os.path.isdir(f"{real_path}/{f}"):
                     if recursive:
-                        tests += self._list_tests([prefix + "/" + f], recursive)
-                else:
-                    if re.match(r".*\.t$", f):
-                        tests += [prefix + "/" + f]
+                        tests += self._list_tests([f"{prefix}/{f}"], recursive)
+                elif re.match(r".*\.t$", f):
+                    tests += [f"{prefix}/{f}"]
         return tests
 
     def _parse_hosts(self, hosts):
-        ret = []
-        for h in args.hosts.split(" "):
-            ret.append((h, DEFAULT_PORT))
+        ret = [(h, DEFAULT_PORT) for h in args.hosts.split(" ")]
         Log.debug(ret)
         return ret
 
@@ -786,7 +768,7 @@ def run_as_server(args):
 def run_as_tester(args):
     Log.header("GLUSTER TEST CLI")
 
-    Log.debug("args = %s" % args)
+    Log.debug(f"args = {args}")
 
     tests = TestRunner(args.gluster_path, args.hosts, args.n, args.tests,
                        args.flaky_tests, valgrind=args.valgrind,

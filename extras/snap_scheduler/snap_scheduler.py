@@ -68,15 +68,15 @@ SCRIPT_NAME = "snap_scheduler"
 scheduler_enabled = False
 log = logging.getLogger(SCRIPT_NAME)
 SHARED_STORAGE_DIR="/run/gluster/shared_storage"
-GCRON_DISABLED = SHARED_STORAGE_DIR+"/snaps/gcron_disabled"
-GCRON_ENABLED = SHARED_STORAGE_DIR+"/snaps/gcron_enabled"
-GCRON_TASKS = SHARED_STORAGE_DIR+"/snaps/glusterfs_snap_cron_tasks"
+GCRON_DISABLED = f"{SHARED_STORAGE_DIR}/snaps/gcron_disabled"
+GCRON_ENABLED = f"{SHARED_STORAGE_DIR}/snaps/gcron_enabled"
+GCRON_TASKS = f"{SHARED_STORAGE_DIR}/snaps/glusterfs_snap_cron_tasks"
 GCRON_CROND_TASK = "/etc/cron.d/glusterfs_snap_cron_tasks"
-LOCK_FILE_DIR = SHARED_STORAGE_DIR+"/snaps/lock_files/"
-LOCK_FILE = LOCK_FILE_DIR+"lock_file"
-TMP_FILE = SHARED_STORAGE_DIR+"/snaps/tmp_file"
+LOCK_FILE_DIR = f"{SHARED_STORAGE_DIR}/snaps/lock_files/"
+LOCK_FILE = f"{LOCK_FILE_DIR}lock_file"
+TMP_FILE = f"{SHARED_STORAGE_DIR}/snaps/tmp_file"
 GCRON_UPDATE_TASK = "/etc/cron.d/gcron_update_task"
-CURRENT_SCHEDULER = SHARED_STORAGE_DIR+"/snaps/current_scheduler"
+CURRENT_SCHEDULER = f"{SHARED_STORAGE_DIR}/snaps/current_scheduler"
 tasks = {}
 longest_field = 12
 current_scheduler = ""
@@ -98,15 +98,21 @@ INVALID_SCHEDULE = 15
 INVALID_ARG = 16
 VOLUME_DOES_NOT_EXIST = 17
 
-def print_error (error_num):
+def print_error(error_num):
     if error_num == INTERNAL_ERROR:
         return "Internal Error"
     elif error_num == SHARED_STORAGE_DIR_DOESNT_EXIST:
-        return "The shared storage directory ("+SHARED_STORAGE_DIR+")" \
-               " does not exist."
+        return (
+            f"The shared storage directory ({SHARED_STORAGE_DIR}" + ")"
+            " does not exist."
+        )
+
     elif error_num == SHARED_STORAGE_NOT_MOUNTED:
-        return "The shared storage directory ("+SHARED_STORAGE_DIR+")" \
-               " is not mounted."
+        return (
+            f"The shared storage directory ({SHARED_STORAGE_DIR}" + ")"
+            " is not mounted."
+        )
+
     elif error_num == ANOTHER_TRANSACTION_IN_PROGRESS:
         return "Another transaction is in progress."
     elif error_num == INIT_FAILED:
@@ -135,7 +141,7 @@ def print_error (error_num):
         return "The volume does not exist."
 
 def output(msg):
-    print("%s: %s" % (SCRIPT_NAME, msg))
+    print(f"{SCRIPT_NAME}: {msg}")
 
 
 def initLogger():
@@ -150,7 +156,7 @@ def initLogger():
 
     process = subprocess.Popen(["gluster", "--print-logdir"],
                                stdout=subprocess.PIPE, universal_newlines=True)
-    logfile = os.path.join(process.stdout.read()[:-1], SCRIPT_NAME + ".log")
+    logfile = os.path.join(process.stdout.read()[:-1], f"{SCRIPT_NAME}.log")
 
     fh = logging.FileHandler(logfile)
     fh.setLevel(logging.DEBUG)
@@ -307,7 +313,7 @@ def load_tasks_from_file():
                 jobname = line[2]
                 longest_field = max(longest_field, len(jobname), len(volname),
                                     len(schedule))
-                tasks[jobname] = schedule+":"+volname
+                tasks[jobname] = f"{schedule}:{volname}"
             f.close()
         ret = 0
     except IOError as e:
@@ -380,30 +386,24 @@ def write_tasks_to_file():
             f.close()
     except IOError as e:
         log.error("Failed to open %s. Error: %s.", TMP_FILE, e)
-        ret = INTERNAL_ERROR
-        return ret
+        return INTERNAL_ERROR
 
     shutil.move(TMP_FILE, GCRON_ENABLED)
-    ret = 0
-
-    return ret
+    return 0
 
 def update_current_scheduler(data):
     try:
         with open(TMP_FILE, "w", 0o644) as f:
-            f.write("%s" % data)
+            f.write(f"{data}")
             f.flush()
             os.fsync(f.fileno())
             f.close()
     except IOError as e:
         log.error("Failed to open %s. Error: %s.", TMP_FILE, e)
-        ret = INTERNAL_ERROR
-        return ret
+        return INTERNAL_ERROR
 
     shutil.move(TMP_FILE, CURRENT_SCHEDULER)
-    ret = 0
-
-    return ret
+    return 0
 
 
 def isVolumePresent(volname):
@@ -444,32 +444,29 @@ def add_schedules(jobname, schedule, volname):
             log.error(print_str)
             output(print_str)
             ret = JOB_ALREADY_EXISTS
+        elif isVolumePresent(volname):
+            tasks[jobname] = f"{schedule}:{volname}"
+            ret = write_tasks_to_file()
+            if ret == 0:
+                # Create a LOCK_FILE for the job
+                job_lockfile = LOCK_FILE_DIR + jobname
+                try:
+                    f = os.open(job_lockfile, os.O_CREAT | os.O_NONBLOCK,
+                                0o644)
+                    os.close(f)
+                except OSError as e:
+                    log.error("Failed to open %s. Error: %s.",
+                              job_lockfile, e)
+                    ret = INTERNAL_ERROR
+                    return ret
+                log.info(f"Successfully added snapshot schedule {jobname}")
+                output("Successfully added snapshot schedule")
+                ret = 0
         else:
-            if not isVolumePresent(volname):
-                print_str = ("Volume %s does not exist. Create %s and retry." %
-                             (volname, volname))
-                log.error(print_str)
-                output(print_str)
-                ret = VOLUME_DOES_NOT_EXIST
-            else:
-                tasks[jobname] = schedule + ":" + volname
-                ret = write_tasks_to_file()
-                if ret == 0:
-                    # Create a LOCK_FILE for the job
-                    job_lockfile = LOCK_FILE_DIR + jobname
-                    try:
-                        f = os.open(job_lockfile, os.O_CREAT | os.O_NONBLOCK,
-                                    0o644)
-                        os.close(f)
-                    except OSError as e:
-                        log.error("Failed to open %s. Error: %s.",
-                                  job_lockfile, e)
-                        ret = INTERNAL_ERROR
-                        return ret
-                    log.info("Successfully added snapshot schedule %s" %
-                             jobname)
-                    output("Successfully added snapshot schedule")
-                    ret = 0
+            print_str = f"Volume {volname} does not exist. Create {volname} and retry."
+            log.error(print_str)
+            output(print_str)
+            ret = VOLUME_DOES_NOT_EXIST
     else:
         print_str = "Failed to add snapshot schedule. " \
                     "Error: Failed to load tasks from "+GCRON_ENABLED
@@ -496,8 +493,7 @@ def delete_schedules(jobname):
                               job_lockfile, e)
                     ret = INTERNAL_ERROR
                     return ret
-                log.info("Successfully deleted snapshot schedule %s"
-                         % jobname)
+                log.info(f"Successfully deleted snapshot schedule {jobname}")
                 output("Successfully deleted snapshot schedule")
                 ret = 0
         else:
@@ -521,17 +517,15 @@ def edit_schedules(jobname, schedule, volname):
     if ret == 0:
         if jobname in tasks:
             if not isVolumePresent(volname):
-                print_str = ("Volume %s does not exist. Create %s and retry." %
-                             (volname, volname))
+                print_str = f"Volume {volname} does not exist. Create {volname} and retry."
                 log.error(print_str)
                 output(print_str)
                 ret = VOLUME_DOES_NOT_EXIST
             else:
-                tasks[jobname] = schedule+":"+volname
+                tasks[jobname] = f"{schedule}:{volname}"
                 ret = write_tasks_to_file()
                 if ret == 0:
-                    log.info("Successfully edited snapshot schedule %s" %
-                             jobname)
+                    log.info(f"Successfully edited snapshot schedule {jobname}")
                     output("Successfully edited snapshot schedule")
         else:
             print_str = ("Failed to edit %s. Error: No such "
@@ -561,9 +555,7 @@ def get_bool_val():
 
     p1.stdout.close()
     output, err = p2.communicate()
-    rv = p2.returncode
-
-    if rv:
+    if rv := p2.returncode:
         log.error("Command output:")
         log.error(err)
         return -1
@@ -586,9 +578,7 @@ def get_selinux_status():
         return -1
 
     output, err = p1.communicate()
-    rv = p1.returncode
-
-    if rv:
+    if rv := p1.returncode:
         log.error("Command output:")
         log.error(err)
         return -1
@@ -622,24 +612,16 @@ def set_cronjob_user_share():
                           stderr=subprocess.PIPE)
 
     output, err = p1.communicate()
-    rv = p1.returncode
-
-    if rv:
+    if rv := p1.returncode:
         log.error("Command output:")
         log.error(err)
         return rv
 
     bool_val = get_bool_val()
-    if (bool_val == "on"):
-        return 0
-    else:
-        # In case of an error or if boolean is not on
-        # we return a failure here
-        return -1
+    return 0 if (bool_val == "on") else -1
 
 def initialise_scheduler():
-    ret = set_cronjob_user_share()
-    if ret:
+    if ret := set_cronjob_user_share():
         log.error("Failed to set selinux boolean "
                   "cron_system_cronjob_use_shares to 'on'")
         return ret
@@ -677,8 +659,7 @@ def initialise_scheduler():
     output("Successfully initialised snapshot scheduler for this node")
     gf_event (EVENT_SNAPSHOT_SCHEDULER_INITIALISED, status="Success")
 
-    ret = 0
-    return ret
+    return 0
 
 
 def syntax_checker(args):
@@ -696,18 +677,17 @@ def syntax_checker(args):
             return ret
         args.volname=args.volname.strip()
 
-    if hasattr(args, 'schedule'):
-        if (len(args.schedule.split()) != 5):
-            output("Invalid Schedule. Please refer to the following for adding a valid cron schedule")
-            print ("* * * * *")
-            print ("| | | | |")
-            print ("| | | | +---- Day of the Week   (range: 1-7, 1 standing for Monday)")
-            print ("| | | +------ Month of the Year (range: 1-12)")
-            print ("| | +-------- Day of the Month  (range: 1-31)")
-            print ("| +---------- Hour              (range: 0-23)")
-            print ("+------------ Minute            (range: 0-59)")
-            ret = INVALID_SCHEDULE
-            return ret
+    if hasattr(args, 'schedule') and (len(args.schedule.split()) != 5):
+        output("Invalid Schedule. Please refer to the following for adding a valid cron schedule")
+        print ("* * * * *")
+        print ("| | | | |")
+        print ("| | | | +---- Day of the Week   (range: 1-7, 1 standing for Monday)")
+        print ("| | | +------ Month of the Year (range: 1-12)")
+        print ("| | +-------- Day of the Month  (range: 1-31)")
+        print ("| +---------- Hour              (range: 0-23)")
+        print ("+------------ Minute            (range: 0-59)")
+        ret = INVALID_SCHEDULE
+        return ret
 
     ret = 0
     return ret
@@ -798,12 +778,18 @@ def perform_operation(args):
         ret = add_schedules(args.jobname, args.schedule, args.volname)
         if ret == 0:
             subprocess.Popen(["touch", "-h", GCRON_TASKS])
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_ADDED,
-                      status="Successfully added job "+args.jobname)
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_ADDED,
+                status=f"Successfully added job {args.jobname}",
+            )
+
         else:
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_ADD_FAILED,
-                      status="Failed to add job "+args.jobname,
-                      error=print_error(ret))
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_ADD_FAILED,
+                status=f"Failed to add job {args.jobname}",
+                error=print_error(ret),
+            )
+
         return ret
 
     # Delete snapshot schedules
@@ -814,12 +800,18 @@ def perform_operation(args):
         ret = delete_schedules(args.jobname)
         if ret == 0:
             subprocess.Popen(["touch", "-h", GCRON_TASKS])
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_DELETED,
-                      status="Successfully deleted job "+args.jobname)
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_DELETED,
+                status=f"Successfully deleted job {args.jobname}",
+            )
+
         else:
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_DELETE_FAILED,
-                      status="Failed to delete job "+args.jobname,
-                      error=print_error(ret))
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_DELETE_FAILED,
+                status=f"Failed to delete job {args.jobname}",
+                error=print_error(ret),
+            )
+
         return ret
 
     # Edit snapshot schedules
@@ -830,12 +822,18 @@ def perform_operation(args):
         ret = edit_schedules(args.jobname, args.schedule, args.volname)
         if ret == 0:
             subprocess.Popen(["touch", "-h", GCRON_TASKS])
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_EDITED,
-                      status="Successfully edited job "+args.jobname)
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_EDITED,
+                status=f"Successfully edited job {args.jobname}",
+            )
+
         else:
-            gf_event (EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_EDIT_FAILED,
-                      status="Failed to edit job "+args.jobname,
-                      error=print_error(ret))
+            gf_event(
+                EVENT_SNAPSHOT_SCHEDULER_SCHEDULE_EDIT_FAILED,
+                status=f"Failed to edit job {args.jobname}",
+                error=print_error(ret),
+            )
+
         return ret
 
     ret = INVALID_ARG
@@ -886,21 +884,20 @@ def main(argv):
     args = parser.parse_args(argv)
 
     if not os.path.exists(SHARED_STORAGE_DIR):
-        output("Failed: "+SHARED_STORAGE_DIR+" does not exist.")
+        output(f"Failed: {SHARED_STORAGE_DIR} does not exist.")
         return SHARED_STORAGE_DIR_DOESNT_EXIST
 
     if not os.path.ismount(SHARED_STORAGE_DIR):
-        output("Failed: Shared storage is not mounted at "+SHARED_STORAGE_DIR)
+        output(f"Failed: Shared storage is not mounted at {SHARED_STORAGE_DIR}")
         return SHARED_STORAGE_NOT_MOUNTED
 
-    if not os.path.exists(SHARED_STORAGE_DIR+"/snaps/"):
+    if not os.path.exists(f"{SHARED_STORAGE_DIR}/snaps/"):
         try:
-            os.makedirs(SHARED_STORAGE_DIR+"/snaps/")
+            os.makedirs(f"{SHARED_STORAGE_DIR}/snaps/")
         except OSError as e:
             if errno != EEXIST:
-                log.error("Failed to create %s : %s", SHARED_STORAGE_DIR+"/snaps/", e)
-                output("Failed to create %s. Error: %s"
-                       % (SHARED_STORAGE_DIR+"/snaps/", e))
+                log.error("Failed to create %s : %s", f"{SHARED_STORAGE_DIR}/snaps/", e)
+                output(f"Failed to create {SHARED_STORAGE_DIR}/snaps/. Error: {e}")
                 return INTERNAL_ERROR
 
     if not os.path.exists(GCRON_ENABLED):
@@ -913,8 +910,7 @@ def main(argv):
         except OSError as e:
             if errno != EEXIST:
                 log.error("Failed to create %s : %s", LOCK_FILE_DIR, e)
-                output("Failed to create %s. Error: %s"
-                       % (LOCK_FILE_DIR, e))
+                output(f"Failed to create {LOCK_FILE_DIR}. Error: {e}")
                 return INTERNAL_ERROR
 
     try:
@@ -931,7 +927,7 @@ def main(argv):
         os.close(f)
     except OSError as e:
         log.error("Failed to open %s : %s", LOCK_FILE, e)
-        output("Failed to open %s. Error: %s" % (LOCK_FILE, e))
+        output(f"Failed to open {LOCK_FILE}. Error: {e}")
         return INTERNAL_ERROR
 
     return ret

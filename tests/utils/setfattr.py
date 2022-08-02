@@ -7,20 +7,12 @@ import xattr
 
 def convert(string):
     tmp_string = string
-    if (string[0] == '0' and
-        (string[1] == 's' or
-         string[1] == 'S')):
-        tmp_string = string.strip('%s%s' %
-                                  (string[0],
-                                   string[1]))
+    if string[0] == '0' and string[1] in ['s', 'S']:
+        tmp_string = string.strip(f'{string[0]}{string[1]}')
         return tmp_string.decode('base64')
 
-    if (string[0] == '0' and
-        (string[1] == 'x' or
-         string[1] == 'X')):
-        tmp_string = string.split('%s%s' %
-                                  (string[0],
-                                   string[1]))
+    if string[0] == '0' and string[1] in ['x', 'X']:
+        tmp_string = string.split(f'{string[0]}{string[1]}')
         return tmp_string[1].decode('hex')
 
     return tmp_string
@@ -56,9 +48,8 @@ if __name__ == '__main__':
         print ("-n and -x are mutually exclusive...")
         sys.exit(1)
 
-    if option.name:
-        if option.value is None:
-            print ("-n option requires -v value...")
+    if option.name and option.value is None:
+        print ("-n option requires -v value...")
 
     args[0] = os.path.abspath(args[0])
 

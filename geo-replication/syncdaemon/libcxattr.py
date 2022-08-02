@@ -39,10 +39,7 @@ class Xattr(object):
 
     @classmethod
     def _query_xattr(cls, path, siz, syscall, *a):
-        if siz:
-            buf = gr_create_string_buffer(siz)
-        else:
-            buf = None
+        buf = gr_create_string_buffer(siz) if siz else None
         ret = getattr(cls.libc, syscall)(*((path,) + a + (buf, siz)))
         if ret == -1:
             cls.raise_oserr()
@@ -64,9 +61,7 @@ class Xattr(object):
         size = cls.lgetxattr(path, attr)
         if size == -1:
             cls.raise_oserr()
-        if size == 0:
-            return ''
-        return cls.lgetxattr(path, attr, size)
+        return '' if size == 0 else cls.lgetxattr(path, attr, size)
 
     @classmethod
     def llistxattr(cls, path, siz=0):
@@ -106,7 +101,4 @@ class Xattr(object):
             size = cls.llistxattr(path)
             if size == -1:
                 cls.raise_oserr()
-            if size == 0:
-                return []
-
-            return cls.llistxattr(path, size)
+            return [] if size == 0 else cls.llistxattr(path, size)
